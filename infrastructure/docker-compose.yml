@@ -1,0 +1,138 @@
+# Solucien DNS Manager — local infrastructure
+#
+# Brings up the full backend stack:
+#   - postgres    : app system-of-record (Prisma) + PowerDNS gpgsql backend
+#   - redis       : caching / rate-limit / coordination
+#   - powerdns    : PowerDNS Authoritative server with the REST API enabled
+#   - api         : the NestJS API (built from apps/api/Dockerfile)
+#
+# Optional profiles:
+#   --profile monitoring  -> Prometheus + Grafana
+#   --profile edge        -> Nginx reverse proxy in front of api + web
+#
+# The web app (apps/web) is normally run with `npm run dev` during development.
+#
+# Usage (from this directory):
+#   docker compose up -d
+#   docker compose --profile monitoring up -d
+#
+# NOTE: credentials below are LOCAL DEV defaults. Use real secrets in production.
+
+name: solucien-dns-manager
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sdm
+      POSTGRES_PASSWORD: sdm
+      POSTGRES_DB: sdm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Creates the dedicated `pdns` database and loads the PowerDNS gpgsql schema.
+      - ./docker/postgres/initdb.sh:/docker-entrypoint-initdb.d/10-init-pdns.sh:ro
+      - ./docker/powerdns/schema.pgsql.sql:/docker-entrypoint-initdb.d/schema.pgsql.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sdm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  powerdns:
+    image: powerdns/pdns-auth-49:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./docker/powerdns/pdns.conf:/etc/powerdns/pdns.conf:ro
+    ports:
+      - "5300:53/udp"
+      - "5300:53/tcp"
+      - "8081:8081" # REST API + webserver
+    healthcheck:
+      test: ["CMD-SHELL", "pdns_control ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      WEB_ORIGIN: http://localhost:3000
+      JWT_SECRET: V5Nju3Ef/lgPTd8/3Vwyn3xni9s0NzmLSEJx9XvtZ+k=
+      DATABASE_URL: postgresql://sdm:sdm@postgres:5432/sdm?schema=public
+      REDIS_URL: redis://redis:6379
+      PDNS_API_URL: http://powerdns:8081
+      PDNS_API_KEY: 1132d3c60d9af09306782c5329856db2350ce9cced371ebe
+      PDNS_SERVER_ID: localhost
+    # Apply migrations (idempotent) then start the server.
+    command: sh -c "npx prisma migrate deploy && node dist/main.js"
+    ports:
+      - "4000:4000"
+
+  # ---- Optional reverse proxy (docker compose --profile edge up) ----
+  nginx:
+    image: nginx:alpine
+    profiles: ["edge"]
+    restart: unless-stopped
+    depends_on:
+      - api
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8080:80"
+
+  # ---- Optional monitoring (docker compose --profile monitoring up) ----
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    volumes:
+      - ./docker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    depends_on:
+      - prometheus
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  postgres-data:
+  redis-data:
+  grafana-data:

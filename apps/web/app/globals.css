@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 4%;
+  --muted: 0 0% 94%;
+  --muted-foreground: 0 0% 38%;
+  --border: 0 0% 82%;
+  --primary: 0 0% 4%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 0 0% 12%;
+  --accent-foreground: 0 0% 100%;
+  --danger: 0 0% 22%;
+  --success: 0 0% 22%;
+  --panel: 0 0% 98%;
+  --panel-strong: 0 0% 90%;
+}
+
+.dark {
+  --background: 0 0% 4%;
+  --foreground: 0 0% 100%;
+  --muted: 0 0% 12%;
+  --muted-foreground: 0 0% 68%;
+  --border: 0 0% 22%;
+  --primary: 0 0% 100%;
+  --primary-foreground: 0 0% 4%;
+  --accent: 0 0% 86%;
+  --accent-foreground: 0 0% 4%;
+  --danger: 0 0% 78%;
+  --success: 0 0% 78%;
+  --panel: 0 0% 7%;
+  --panel-strong: 0 0% 14%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}

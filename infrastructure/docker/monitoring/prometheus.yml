@@ -1,0 +1,15 @@
+# Minimal Prometheus scrape config for SDM.
+# Add a /metrics endpoint to the API (e.g. @willsoto/nestjs-prometheus) to populate.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "sdm-api"
+    metrics_path: /api/metrics
+    static_configs:
+      - targets: ["api:4000"]

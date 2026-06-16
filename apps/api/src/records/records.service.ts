@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { seedRecords, type DnsRecord as SharedRecord } from "@solucien/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { PowerDnsService } from "../powerdns/powerdns.service";
@@ -38,6 +38,8 @@ export class RecordsService {
 
   /** Create a record in Postgres and push it to PowerDNS (best-effort). */
   async create(dto: CreateRecordDto): Promise<SharedRecord> {
+    this.validateEmailDnsRecord(dto);
+
     // MX records encode priority in the record content for PowerDNS.
     const content =
       dto.type === "MX" && dto.priority != null ? `${dto.priority} ${dto.value}` : dto.value;
@@ -88,6 +90,60 @@ export class RecordsService {
       priority: created.priority ?? undefined,
       updatedAt: created.updatedAt.toISOString(),
     };
+  }
+
+  private validateEmailDnsRecord(dto: CreateRecordDto): void {
+    const name = dto.name.trim().toLowerCase();
+    const value = dto.value.trim();
+
+    if (dto.type === "MX") {
+      if (dto.priority === undefined || dto.priority === null) {
+        throw new BadRequestException("MX records require a priority value.");
+      }
+
+      if (this.looksLikeIpAddress(value)) {
+        throw new BadRequestException("MX records must point to a hostname, not an IP address.");
+      }
+
+      if (!this.isValidHostname(value)) {
+        throw new BadRequestException("MX records must point to a valid hostname.");
+      }
+
+      return;
+    }
+
+    if (dto.type !== "TXT") {
+      return;
+    }
+
+    if (value.startsWith("v=spf1")) {
+      return;
+    }
+
+    if (name.includes("_domainkey") && !value.startsWith("v=DKIM1")) {
+      throw new BadRequestException("DKIM TXT records must start with v=DKIM1.");
+    }
+
+    if (name === "_dmarc" && !value.startsWith("v=DMARC1")) {
+      throw new BadRequestException("DMARC TXT records must start with v=DMARC1.");
+    }
+  }
+
+  private looksLikeIpAddress(value: string): boolean {
+    const trimmed = value.trim();
+    return /^\d{1,3}(\.\d{1,3}){3}$/.test(trimmed) || trimmed.includes(":");
+  }
+
+  private isValidHostname(value: string): boolean {
+    const hostname = value.endsWith(".") ? value.slice(0, -1) : value;
+
+    if (hostname.length < 1 || hostname.length > 253) {
+      return false;
+    }
+
+    return hostname.split(".").every((label) => {
+      return /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(label);
+    });
   }
 }
 

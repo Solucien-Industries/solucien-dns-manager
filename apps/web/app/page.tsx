@@ -1,48 +1,45 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import {
-  Activity,
   ArrowRight,
+  BookOpen,
   Check,
-  CircleAlert,
   Database,
+  ExternalLink,
   Fingerprint,
   Github,
   Globe2,
   KeyRound,
-  Layers,
   LockKeyhole,
   Moon,
   Network,
-  Plus,
-  Search,
   Server,
   ShieldCheck,
   Sun,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useAuth } from "@/components/auth-provider";
-import { getDashboardData } from "@/lib/api";
-import { DnsRecord, RecordType, workflow } from "@/lib/mock-dns";
+import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { SiteFooter } from "@/components/site-footer";
+import { DOCS_URL } from "@/lib/api";
+import { workflow } from "@/lib/mock-dns";
 import { cn } from "@/lib/utils";
 import { signIn } from "next-auth/react";
 
-const recordTypes: RecordType[] = ["A", "AAAA", "CNAME", "MX", "TXT", "NS"];
 type StatItem = [label: string, value: string | number, icon: LucideIcon];
-type NavItem = [label: string, icon: LucideIcon];
 
 const capabilities = [
   "African ccTLD support without registrar lock-in",
-  "PowerDNS authoritative zones with ns1/ns2 assignment",
+  "PowerDNS authoritative zones with Nani nameservers",
   "Record operations for A, AAAA, CNAME, MX, TXT, and NS",
-  "Workspace access through external identity providers",
+  "SMTP relay, monitoring, metrics, and OAuth workspace access",
 ];
 
 export default function Home() {
   const [dark, setDark] = useState(false);
+  const [view, setView] = useState<"console" | "home">("console");
   const { status, accessToken, user, signOut, enterPreview, error } = useAuth();
 
   return (
@@ -55,13 +52,26 @@ export default function Home() {
             </div>
           </div>
         ) : status === "authenticated" && accessToken ? (
-          <Dashboard
-            accessToken={accessToken}
-            user={user}
-            onSignOut={signOut}
-            dark={dark}
-            onThemeChange={() => setDark((value) => !value)}
-          />
+          view === "console" ? (
+            <DashboardShell
+              accessToken={accessToken}
+              user={user}
+              onSignOut={signOut}
+              dark={dark}
+              onThemeChange={() => setDark((value) => !value)}
+              onGoHome={() => setView("home")}
+            />
+          ) : (
+            <Landing
+              dark={dark}
+              authenticated
+              userLabel={user?.name ?? user?.email ?? "Workspace"}
+              onEnter={async () => setView("console")}
+              authError={error}
+              onThemeChange={() => setDark((value) => !value)}
+              onSignOut={signOut}
+            />
+          )
         ) : (
           <Landing
             dark={dark}
@@ -77,18 +87,43 @@ export default function Home() {
 
 function Landing({
   dark,
+  authenticated = false,
+  userLabel,
   onEnter,
   authError,
   onThemeChange,
+  onSignOut,
 }: {
   dark: boolean;
-  onEnter: () => Promise<void>;
+  authenticated?: boolean;
+  userLabel?: string;
+  onEnter: () => void | Promise<void>;
   authError: string | null;
   onThemeChange: () => void;
+  onSignOut?: () => Promise<void>;
 }) {
   return (
     <div>
-      <Header dark={dark} onThemeChange={onThemeChange} onEnter={onEnter} />
+      <Header
+        dark={dark}
+        authenticated={authenticated}
+        onThemeChange={onThemeChange}
+        onEnter={onEnter}
+        onSignOut={onSignOut}
+      />
+      {authenticated ? (
+        <div className="border-b border-border bg-panel">
+          <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+            <p className="text-sm text-muted-foreground">
+              Signed in as <span className="font-semibold text-foreground">{userLabel}</span>. Your session stays active on the home page.
+            </p>
+            <Button onClick={() => void onEnter()}>
+              Open console
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <section className="border-b border-border">
         <div className="mx-auto grid min-h-[calc(100vh-72px)] max-w-7xl items-center gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:px-8">
           <div className="max-w-2xl">
@@ -97,19 +132,26 @@ function Landing({
               Third-party verified access. No local passwords.
             </div>
             <h1 className="text-4xl font-semibold leading-tight tracking-normal text-foreground sm:text-5xl lg:text-6xl">
-              Solucien DNS Manager
+              Nani DNS
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
-              A professional DNS operations console for African domains and global TLDs, built around Solucien nameservers, PowerDNS zones, and trusted OAuth identity.
+              A professional DNS operations console for African domains and global TLDs, built around Nani nameservers, PowerDNS zones, and trusted OAuth identity.
             </p>
             <div className="mt-8 grid max-w-lg gap-3 sm:grid-cols-2">
-              <Button onClick={onEnter}>
-                Preview dashboard
+              <Button onClick={() => void onEnter()}>
+                {authenticated ? "Open console" : "Preview dashboard"}
                 <ArrowRight className="h-4 w-4" />
               </Button>
-              <Button variant="outline" onClick={() => document.getElementById("access")?.scrollIntoView({ behavior: "smooth" })}>
-                Sign in options
-              </Button>
+              <a
+                href={DOCS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-transparent px-4 text-sm font-semibold transition hover:bg-muted"
+              >
+                <BookOpen className="h-4 w-4" />
+                API documentation
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
             </div>
           </div>
           <DnsNetworkMap />
@@ -149,23 +191,49 @@ function Landing({
           <p className="text-sm font-bold uppercase tracking-normal text-muted-foreground">Secure workspace access</p>
           <h2 className="mt-2 text-3xl font-semibold">Sign in with a trusted identity provider.</h2>
           <p className="mt-4 text-sm leading-6 text-muted-foreground">
-            Solucien DNS Manager treats users as externally verified identities. Google and GitHub handle credential verification; the app receives an authenticated user profile for tenant access.
+            Nani DNS treats users as externally verified identities. Google and GitHub handle credential verification; the app receives an authenticated user profile for tenant access.
           </p>
+          <a
+            href={DOCS_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-foreground underline-offset-4 hover:underline"
+          >
+            Read the Nani API documentation
+            <ExternalLink className="h-4 w-4" />
+          </a>
         </div>
-        <AuthPanel onEnter={onEnter} authError={authError} />
+        {authenticated ? (
+          <div className="rounded-md border border-border bg-background p-5">
+            <p className="font-semibold">You are already signed in</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Return to the console to manage domains, DNS records, SMTP, and billing.
+            </p>
+            <Button className="mt-5" onClick={() => void onEnter()}>
+              Open console
+            </Button>
+          </div>
+        ) : (
+          <AuthPanel onEnter={onEnter} authError={authError} />
+        )}
       </section>
+      <SiteFooter />
     </div>
   );
 }
 
 function Header({
   dark,
+  authenticated = false,
   onThemeChange,
   onEnter,
+  onSignOut,
 }: {
   dark: boolean;
+  authenticated?: boolean;
   onThemeChange: () => void;
-  onEnter: () => Promise<void>;
+  onEnter: () => void | Promise<void>;
+  onSignOut?: () => Promise<void>;
 }) {
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur">
@@ -175,18 +243,32 @@ function Header({
             <Network className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-sm font-bold leading-4">Solucien</p>
-            <p className="text-xs text-muted-foreground">DNS Manager</p>
+            <p className="text-sm font-bold leading-4">Nani</p>
+            <p className="text-xs text-muted-foreground">DNS</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <a
+            href={DOCS_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="hidden h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition hover:bg-muted sm:inline-flex"
+          >
+            <BookOpen className="h-4 w-4" />
+            API docs
+          </a>
           <Button variant="ghost" className="h-10 w-10 px-0" onClick={onThemeChange} aria-label="Toggle theme">
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
-          <Button variant="outline" className="hidden sm:inline-flex" onClick={onEnter}>
+          <Button variant="outline" className="hidden sm:inline-flex" onClick={() => void onEnter()}>
             <LockKeyhole className="h-4 w-4" />
-            Console
+            {authenticated ? "Console" : "Console"}
           </Button>
+          {authenticated && onSignOut ? (
+            <Button variant="outline" onClick={() => void onSignOut()}>
+              Sign out
+            </Button>
+          ) : null}
         </div>
       </div>
     </header>
@@ -197,7 +279,7 @@ function AuthPanel({
   onEnter,
   authError,
 }: {
-  onEnter: () => Promise<void>;
+  onEnter: () => void | Promise<void>;
   authError: string | null;
 }) {
   const { config } = useAuth();
@@ -264,9 +346,9 @@ function AuthPanel({
 
 function DnsNetworkMap() {
   const steps = [
-    ["Domain", "solucien.cd"],
-    ["Nameservers", "ns1 / ns2"],
-    ["PowerDNS Zone", "solucien.cd."],
+    ["Domain", "example.com"],
+    ["Nameservers", "ns1.nani.dns"],
+    ["PowerDNS Zone", "example.com."],
     ["Records", "A, MX, TXT"],
   ];
 
@@ -289,7 +371,7 @@ function DnsNetworkMap() {
             <div className="hidden h-px bg-border sm:block" />
             <div className="rounded-md border border-border bg-background p-4">
               <p className="text-xs font-bold uppercase tracking-normal text-muted-foreground">Control plane</p>
-              <p className="mt-2 font-semibold">{index === 0 ? "Tenant verified" : index === 1 ? "Solucien routing" : index === 2 ? "API synchronized" : "Ready to publish"}</p>
+              <p className="mt-2 font-semibold">{index === 0 ? "Tenant verified" : index === 1 ? "Nani routing" : index === 2 ? "API synchronized" : "Ready to publish"}</p>
             </div>
           </div>
         ))}
@@ -306,144 +388,6 @@ function DnsNetworkMap() {
             <p className="text-sm text-muted-foreground">{label}</p>
           </div>
         ))}
-      </div>
-    </div>
-  );
-}
-
-function Dashboard({
-  accessToken,
-  user,
-  dark,
-  onThemeChange,
-  onSignOut,
-}:
-  {
-    accessToken: string;
-    user: {
-      id: string;
-      email: string;
-      name: string | null;
-      role: string;
-      tenantId: string;
-    } | null;
-    dark: boolean;
-    onThemeChange: () => void;
-    onSignOut: () => Promise<void>;
-  }) {
-  const [recordFilter, setRecordFilter] = useState<RecordType | "All">("All");
-  const [query, setQuery] = useState("");
-  const [selectedDomain, setSelectedDomain] = useState("solucien.cd");
-  const [data, setData] = useState<Awaited<ReturnType<typeof getDashboardData>> | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-
-    getDashboardData(accessToken).then((dashboardData) => {
-      if (mounted) {
-        setData(dashboardData);
-      }
-    });
-
-    return () => {
-      mounted = false;
-    };
-  }, [accessToken]);
-
-  const records = useMemo(() => {
-    const source = data?.records ?? [];
-    return source.filter((record) => {
-      const matchesType = recordFilter === "All" || record.type === recordFilter;
-      const matchesSearch = `${record.domain} ${record.name} ${record.value}`.toLowerCase().includes(query.toLowerCase());
-      return matchesType && matchesSearch;
-    });
-  }, [data?.records, query, recordFilter]);
-
-  const selectedDomainData = data?.domains.find((domain) => domain.name === selectedDomain);
-
-  if (!data) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-background">
-        <div className="rounded-md border border-border bg-panel p-6 text-sm font-semibold">Loading Solucien DNS Manager...</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-background">
-        <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <Network className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-bold leading-5">Solucien DNS Manager</p>
-              <p className="text-xs text-muted-foreground">Tenant: {user?.name ?? user?.email ?? "Solucien Industries"}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" className="h-10 w-10 px-0" onClick={onThemeChange} aria-label="Toggle theme">
-              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
-            <Button variant="outline" onClick={onSignOut}>Sign out</Button>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto grid max-w-7xl gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[208px_1fr] lg:px-8">
-        <aside className="rounded-md border border-border bg-panel p-2 lg:min-h-[calc(100vh-112px)]">
-          {([
-            ["Overview", Activity],
-            ["Domains", Globe2],
-            ["DNS Records", Database],
-            ["Nameservers", Server],
-            ["Monitoring", ShieldCheck],
-          ] satisfies NavItem[]).map(([label, Icon], index) => (
-            <button
-              key={label}
-              className={cn(
-                "mb-1 flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-semibold text-muted-foreground transition hover:bg-background hover:text-foreground",
-                index === 0 && "bg-background text-foreground",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
-        </aside>
-
-        <section className="grid gap-5">
-          <div className="rounded-md border border-border bg-panel p-5">
-            <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-              <div>
-                <p className="text-sm font-semibold text-muted-foreground">PowerDNS authoritative dashboard</p>
-                <h1 className="mt-1 text-3xl font-semibold">Zones, records, and nameserver health.</h1>
-              </div>
-              <Button>
-                <Plus className="h-4 w-4" />
-                Add domain
-              </Button>
-            </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {([
-                ["Active domains", data.stats.activeDomains, Globe2],
-                ["DNS records", data.stats.managedRecords, Database],
-                ["Nameservers", data.stats.nameservers, Server],
-                ["Review queue", data.stats.attentionItems, CircleAlert],
-              ] satisfies StatItem[]).map(([label, value, Icon]) => (
-                <div key={label} className="rounded-md border border-border bg-background p-4">
-                  <div className="mb-5 flex items-center justify-between">
-                    <Icon className="h-5 w-5 text-muted-foreground" />
-                    <span className="rounded border border-border px-2 py-1 text-xs font-bold text-muted-foreground">SDM</span>
-                  </div>
-                  <p className="text-3xl font-semibold">{value}</p>
-                  <p className="text-sm text-muted-foreground">{label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
       </div>
     </div>
   );

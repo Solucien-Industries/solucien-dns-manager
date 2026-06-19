@@ -1,0 +1,19 @@
+export const metadata = {
+  title: 'Dashboard',
+  description: 'Aggregated domains, records, and stats for the console.',
+}
+
+# Dashboard
+
+The dashboard endpoint returns the payload used by the web console overview. {{ className: 'lead' }}
+
+## Get dashboard data
+
+<CodeGroup tag="GET" label="/api/dashboard">
+
+```bash {{ title: 'cURL' }}
+curl http://localhost:4000/api/dashboard \
+  -H "Authorization: Bearer YOUR_JWT"
+```
+
+</CodeGroup>

@@ -39,7 +39,7 @@ export class AuthService {
         id: "ephemeral",
         email: dto.email,
         name: dto.name ?? null,
-        role: "MEMBER",
+        role: dto.email === "preview@solucien.local" ? "OWNER" : "MEMBER",
         tenantId: "ephemeral-tenant",
       };
     }

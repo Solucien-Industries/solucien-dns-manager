@@ -39,6 +39,7 @@ model Tenant {
   slug      String   @unique
   users     User[]
   domains   Domain[]
+  apiKeys   ApiKey[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -55,10 +56,29 @@ model User {
   passwordHash String?  // optional local credential (mostly OAuth-only)
   tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantId     String
+  apiKeys      ApiKey[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([tenantId])
+}
+
+/// Programmatic access key for automation (hashed at rest).
+model ApiKey {
+  id         String    @id @default(cuid())
+  name       String
+  prefix     String
+  keyHash    String    @unique
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId   String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
 }
 
 /// A managed domain / PowerDNS zone.
@@ -69,7 +89,7 @@ model Domain {
   zone        String       @unique // PowerDNS canonical zone, e.g. "solucien.cd."
   status      DomainStatus @default(Pending)
   owner       String
-  nameservers String[]     @default(["ns1.soluciendns.com", "ns2.soluciendns.com"])
+  nameservers String[]     @default(["ns1.nani.dns", "ns2.nani.dns"])
   uptime      String       @default("Pending")
   lastSyncAt  DateTime?
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)

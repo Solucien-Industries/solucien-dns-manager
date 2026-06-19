@@ -1,0 +1,55 @@
+export const metadata = {
+  title: 'SMTP',
+  description: 'Send email through the Nani SMTP relay using secure ports 587 and 465.',
+}
+
+# SMTP
+
+Send emails using SMTP instead of the REST API. {{ className: 'lead' }}
+
+Nani provides a managed SMTP relay for each workspace. Generate an SMTP password in the console, then connect your application using the credentials below.
+
+## Secure ports
+
+<Properties>
+  <Property name="Port 587" type="number">
+    **STARTTLS (recommended)** — upgrade to TLS after connecting. Best for most apps and frameworks.
+  </Property>
+  <Property name="Port 465" type="number">
+    **Implicit SSL/TLS** — encrypted from the first byte. Use when your client requires SMTPS.
+  </Property>
+  <Property name="Host" type="string">
+    `smtp.nani.dns`
+  </Property>
+  <Property name="Username" type="string">
+    `nani`
+  </Property>
+  <Property name="Password" type="string">
+    Workspace secret from **SMTP → Generate password**
+  </Property>
+</Properties>
+
+## Generate credentials
+
+<CodeGroup tag="POST" label="/api/smtp/credentials">
+
+```bash {{ title: 'cURL' }}
+curl -X POST http://localhost:4000/api/smtp/credentials \
+  -H "Authorization: Bearer YOUR_JWT"
+```
+
+</CodeGroup>
+
+## Example (STARTTLS on 587)
+
+```bash {{ title: 'Connection summary' }}
+Host: smtp.nani.dns
+Port: 587
+Encryption: STARTTLS
+Username: nani
+Password: nani_smtp_...
+```
+
+<Note>
+  Rotating the SMTP password revokes the previous credential immediately.
+</Note>

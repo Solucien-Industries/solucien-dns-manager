@@ -15,6 +15,20 @@ export class DomainsController {
     return this.domains.findAll();
   }
 
+  @Get(":name/export")
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  exportZone(@Param("name") name: string) {
+    return this.domains.exportZone(name);
+  }
+
+  @Get(":name/verification")
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  verifyDelegation(@Param("name") name: string) {
+    return this.domains.verifyDelegation(name);
+  }
+
   @Get(":name")
   findOne(@Param("name") name: string) {
     return this.domains.findOne(name);

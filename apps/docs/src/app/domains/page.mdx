@@ -1,0 +1,56 @@
+export const metadata = {
+  title: 'Domains',
+  description: 'Create and list authoritative DNS zones.',
+}
+
+# Domains
+
+Domains represent PowerDNS zones in your tenant workspace. New zones are assigned Nani nameservers (`ns1.nani.dns` / `ns2.nani.dns`). {{ className: 'lead' }}
+
+## List domains
+
+<CodeGroup tag="GET" label="/api/domains">
+
+```bash {{ title: 'cURL' }}
+curl http://localhost:4000/api/domains \
+  -H "Authorization: Bearer YOUR_JWT"
+```
+
+</CodeGroup>
+
+## Get a domain
+
+<CodeGroup tag="GET" label="/api/domains/{name}">
+
+```bash {{ title: 'cURL' }}
+curl http://localhost:4000/api/domains/example.com \
+  -H "Authorization: Bearer YOUR_JWT"
+```
+
+</CodeGroup>
+
+## Create a domain
+
+Requires JWT authentication. After the zone is created, delegate DNS at your registrar by pointing to the Nani nameserver pair.
+
+<CodeGroup tag="POST" label="/api/domains">
+
+```bash {{ title: 'cURL' }}
+curl -X POST http://localhost:4000/api/domains \
+  -H "Authorization: Bearer YOUR_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"example.com","owner":"Your Organization"}'
+```
+
+</CodeGroup>
+
+## Nameserver delegation
+
+| Nameserver | Role |
+| --- | --- |
+| `ns1.nani.dns` | Primary (Europe) |
+| `ns2.nani.dns` | Secondary (Africa) |
+
+<Note>
+  Zones remain in **Pending** status until your registrar publishes the Nani nameservers.
+</Note>

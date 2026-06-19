@@ -21,11 +21,14 @@ function mockDashboard() {
  * Falls back to local mock data so the console still renders when the backend
  * (or PowerDNS/Postgres) isn't running yet.
  */
-export async function getDashboardData() {
+export async function getDashboardData(accessToken: string) {
   try {
     const res = await fetch(`${API_URL}/api/dashboard`, {
       cache: "no-store",
       signal: AbortSignal.timeout(4000),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
     });
     if (!res.ok) throw new Error(`API responded ${res.status}`);
     return (await res.json()) as ReturnType<typeof mockDashboard>;

@@ -24,11 +24,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@/components/auth-provider";
 import { getDashboardData } from "@/lib/api";
 import { DnsRecord, RecordType, workflow } from "@/lib/mock-dns";
 import { cn } from "@/lib/utils";
-// 🛠️ Fixed: Import next-auth hooks to correctly sync live credentials
-import { signIn, signOut, useSession } from "next-auth/react";
+import { signIn } from "next-auth/react";
 
 const recordTypes: RecordType[] = ["A", "AAAA", "CNAME", "MX", "TXT", "NS"];
 type StatItem = [label: string, value: string | number, icon: LucideIcon];
@@ -43,12 +43,7 @@ const capabilities = [
 
 export default function Home() {
   const [dark, setDark] = useState(false);
-  // 🔄 Fixed: Listen directly to live Google/GitHub active session tokens
-  const { data: session, status } = useSession();
-  const [previewAuth, setPreviewAuth] = useState(false);
-
-  // Determine if user has authenticated through either OAuth or local development bypass
-  const isAuthed = !!session || previewAuth;
+  const { status, accessToken, user, signOut, enterPreview, error } = useAuth();
 
   return (
     <main className={cn(dark && "dark")}>
@@ -59,22 +54,19 @@ export default function Home() {
               Verifying security tokens...
             </div>
           </div>
-        ) : isAuthed ? (
+        ) : status === "authenticated" && accessToken ? (
           <Dashboard
-            onSignOut={() => {
-              if (session) {
-                signOut();
-              } else {
-                setPreviewAuth(false);
-              }
-            }}
+            accessToken={accessToken}
+            user={user}
+            onSignOut={signOut}
             dark={dark}
             onThemeChange={() => setDark((value) => !value)}
           />
         ) : (
           <Landing
             dark={dark}
-            onEnter={() => setPreviewAuth(true)}
+            onEnter={enterPreview}
+            authError={error}
             onThemeChange={() => setDark((value) => !value)}
           />
         )}
@@ -83,7 +75,17 @@ export default function Home() {
   );
 }
 
-function Landing({ dark, onEnter, onThemeChange }: { dark: boolean; onEnter: () => void; onThemeChange: () => void }) {
+function Landing({
+  dark,
+  onEnter,
+  authError,
+  onThemeChange,
+}: {
+  dark: boolean;
+  onEnter: () => Promise<void>;
+  authError: string | null;
+  onThemeChange: () => void;
+}) {
   return (
     <div>
       <Header dark={dark} onThemeChange={onThemeChange} onEnter={onEnter} />
@@ -150,13 +152,21 @@ function Landing({ dark, onEnter, onThemeChange }: { dark: boolean; onEnter: () 
             Solucien DNS Manager treats users as externally verified identities. Google and GitHub handle credential verification; the app receives an authenticated user profile for tenant access.
           </p>
         </div>
-        <AuthPanel onEnter={onEnter} />
+        <AuthPanel onEnter={onEnter} authError={authError} />
       </section>
     </div>
   );
 }
 
-function Header({ dark, onThemeChange, onEnter }: { dark: boolean; onThemeChange: () => void; onEnter: () => void }) {
+function Header({
+  dark,
+  onThemeChange,
+  onEnter,
+}: {
+  dark: boolean;
+  onThemeChange: () => void;
+  onEnter: () => Promise<void>;
+}) {
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur">
       <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -183,7 +193,25 @@ function Header({ dark, onThemeChange, onEnter }: { dark: boolean; onThemeChange
   );
 }
 
-function AuthPanel({ onEnter }: { onEnter: () => void }) {
+function AuthPanel({
+  onEnter,
+  authError,
+}: {
+  onEnter: () => Promise<void>;
+  authError: string | null;
+}) {
+  const { config } = useAuth();
+  const [entering, setEntering] = useState(false);
+
+  async function handlePreview() {
+    setEntering(true);
+    try {
+      await onEnter();
+    } finally {
+      setEntering(false);
+    }
+  }
+
   return (
     <div className="rounded-md border border-border bg-background p-5">
       <div className="mb-5 flex items-start gap-3">
@@ -196,31 +224,40 @@ function AuthPanel({ onEnter }: { onEnter: () => void }) {
         </div>
       </div>
       <div className="grid gap-3">
-        {/* 🛠️ Fixed: Swapped out absolute href paths to run native runtime hooks instead */}
-        <button
-          onClick={() => signIn("google")}
-          className="inline-flex h-11 items-center justify-center gap-3 rounded-md border border-border bg-background px-4 text-sm font-semibold transition hover:bg-muted cursor-pointer"
-        >
-          <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border text-xs font-bold">G</span>
-          Continue with Google
-        </button>
+        {config?.google ? (
+          <button
+            onClick={() => signIn("google")}
+            className="inline-flex h-11 items-center justify-center gap-3 rounded-md border border-border bg-background px-4 text-sm font-semibold transition hover:bg-muted cursor-pointer"
+          >
+            <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border text-xs font-bold">G</span>
+            Continue with Google
+          </button>
+        ) : null}
 
-        <button
-          onClick={() => signIn("github")}
-          className="inline-flex h-11 items-center justify-center gap-3 rounded-md border border-border bg-background px-4 text-sm font-semibold transition hover:bg-muted cursor-pointer"
-        >
-          <Github className="h-5 w-5" />
-          Continue with GitHub
-        </button>
+        {config?.github ? (
+          <button
+            onClick={() => signIn("github")}
+            className="inline-flex h-11 items-center justify-center gap-3 rounded-md border border-border bg-background px-4 text-sm font-semibold transition hover:bg-muted cursor-pointer"
+          >
+            <Github className="h-5 w-5" />
+            Continue with GitHub
+          </button>
+        ) : null}
 
-        <Button variant="primary" onClick={onEnter}>
-          <KeyRound className="h-4 w-4" />
-          Preview authenticated dashboard
-        </Button>
+        {config?.previewAvailable ? (
+          <Button variant="primary" onClick={handlePreview} disabled={entering}>
+            <KeyRound className="h-4 w-4" />
+            {entering ? "Starting preview..." : "Preview authenticated dashboard"}
+          </Button>
+        ) : null}
       </div>
-      <p className="mt-4 text-xs leading-5 text-muted-foreground">
-        OAuth redirects require provider credentials in the local environment. The preview button keeps the frontend testable while those secrets are absent.
-      </p>
+      {authError ? (
+        <p className="mt-4 text-xs leading-5 text-red-600">{authError}</p>
+      ) : (
+        <p className="mt-4 text-xs leading-5 text-muted-foreground">
+          OAuth redirects require provider credentials in apps/web/.env.local. Preview mode exchanges a dev-only API token so the dashboard stays testable without OAuth.
+        </p>
+      )}
     </div>
   );
 }
@@ -275,14 +312,24 @@ function DnsNetworkMap() {
 }
 
 function Dashboard({
+  accessToken,
+  user,
   dark,
   onThemeChange,
   onSignOut,
 }:
   {
+    accessToken: string;
+    user: {
+      id: string;
+      email: string;
+      name: string | null;
+      role: string;
+      tenantId: string;
+    } | null;
     dark: boolean;
     onThemeChange: () => void;
-    onSignOut: () => void;
+    onSignOut: () => Promise<void>;
   }) {
   const [recordFilter, setRecordFilter] = useState<RecordType | "All">("All");
   const [query, setQuery] = useState("");
@@ -292,7 +339,7 @@ function Dashboard({
   useEffect(() => {
     let mounted = true;
 
-    getDashboardData().then((dashboardData) => {
+    getDashboardData(accessToken).then((dashboardData) => {
       if (mounted) {
         setData(dashboardData);
       }
@@ -301,7 +348,7 @@ function Dashboard({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [accessToken]);
 
   const records = useMemo(() => {
     const source = data?.records ?? [];
@@ -332,7 +379,7 @@ function Dashboard({
             </div>
             <div>
               <p className="font-bold leading-5">Solucien DNS Manager</p>
-              <p className="text-xs text-muted-foreground">Tenant: Solucien Industries</p>
+              <p className="text-xs text-muted-foreground">Tenant: {user?.name ?? user?.email ?? "Solucien Industries"}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">

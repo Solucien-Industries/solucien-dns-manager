@@ -7,6 +7,10 @@ import { AuthModule } from "./auth/auth.module";
 import { DomainsModule } from "./domains/domains.module";
 import { RecordsModule } from "./records/records.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { ApiKeysModule } from "./api-keys/api-keys.module";
+import { SmtpModule } from "./smtp/smtp.module";
+import { MonitoringModule } from "./monitoring/monitoring.module";
+import { MetricsModule } from "./metrics/metrics.module";
 import { HealthController } from "./health/health.controller";
 
 @Module({
@@ -19,6 +23,10 @@ import { HealthController } from "./health/health.controller";
     DomainsModule,
     RecordsModule,
     DashboardModule,
+    ApiKeysModule,
+    SmtpModule,
+    MonitoringModule,
+    MetricsModule,
   ],
   controllers: [HealthController],
 })

@@ -1,0 +1,25 @@
+export const metadata = {
+  title: 'Introduction',
+  description:
+    'Nani DNS API for multi-tenant authoritative DNS, PowerDNS zones, SMTP relay, and workspace management.',
+}
+
+# Nani DNS API
+
+Use the Nani API to manage authoritative DNS zones, records, SMTP relay credentials, and workspace settings. Built for African ccTLDs and global TLDs with PowerDNS and tenant isolation. {{ className: 'lead' }}
+
+<Note>
+  Base URL for local development: `http://localhost:4000/api`. API keys and SMTP passwords are managed in the Nani console.
+</Note>
+
+## What you can do
+
+- Exchange an OAuth identity for a session JWT
+- Create and list domains with assigned Nani nameservers
+- Manage DNS records per zone
+- Generate SMTP relay credentials (ports 587 STARTTLS and 465 SSL/TLS)
+- Fetch dashboard metrics and create programmatic API keys
+
+## OpenAPI
+
+Interactive Swagger docs are available at [`/api/docs`](http://localhost:4000/api/docs).

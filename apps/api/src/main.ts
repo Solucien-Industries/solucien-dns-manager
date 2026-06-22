@@ -24,7 +24,7 @@ async function bootstrap() {
 
   // Swagger / OpenAPI docs at /api/docs
   const config = new DocumentBuilder()
-    .setTitle("Solucien DNS Manager API")
+    .setTitle("Nani DNS API")
     .setDescription("Multi-tenant DNS hosting and management API (PowerDNS-backed).")
     .setVersion("0.1.0")
     .addBearerAuth()

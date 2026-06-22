@@ -1,0 +1,40 @@
+export const metadata = {
+  title: 'DNS records',
+  description: 'Manage DNS records within authoritative zones.',
+}
+
+# DNS records
+
+Record endpoints manage A, AAAA, CNAME, MX, TXT, and NS entries within a tenant zone. {{ className: 'lead' }}
+
+## List records
+
+<CodeGroup tag="GET" label="/api/records">
+
+```bash {{ title: 'cURL' }}
+curl "http://localhost:4000/api/records?domain=solucien.cd" \
+  -H "Authorization: Bearer YOUR_JWT"
+```
+
+</CodeGroup>
+
+## Create a record
+
+Protected route — requires bearer token.
+
+<CodeGroup tag="POST" label="/api/records">
+
+```bash {{ title: 'cURL' }}
+curl -X POST http://localhost:4000/api/records \
+  -H "Authorization: Bearer YOUR_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "solucien.cd",
+    "type": "A",
+    "name": "@",
+    "value": "203.0.113.10",
+    "ttl": 300
+  }'
+```
+
+</CodeGroup>

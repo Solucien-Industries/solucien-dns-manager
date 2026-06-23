@@ -214,7 +214,7 @@ function Landing({
             </Button>
           </div>
         ) : (
-          <AuthPanel onEnter={onEnter} authError={authError} />
+          <AuthPanel authError={authError} />
         )}
       </section>
       <SiteFooter />
@@ -275,22 +275,18 @@ function Header({
   );
 }
 
-function AuthPanel({
-  onEnter,
-  authError,
-}: {
-  onEnter: () => void | Promise<void>;
-  authError: string | null;
-}) {
-  const { config } = useAuth();
-  const [entering, setEntering] = useState(false);
+function AuthPanel({ authError }: { authError: string | null }) {
+  const { config, enterPreview } = useAuth();
+  const [entering, setEntering] = useState<"admin" | "user" | null>(null);
 
-  async function handlePreview() {
-    setEntering(true);
+  async function handlePreview(role: "admin" | "user") {
+    setEntering(role);
     try {
-      await onEnter();
+      await enterPreview(role);
+    } catch {
+      // Error surfaced via auth context; reset the button state below.
     } finally {
-      setEntering(false);
+      setEntering(null);
     }
   }
 
@@ -327,17 +323,26 @@ function AuthPanel({
         ) : null}
 
         {config?.previewAvailable ? (
-          <Button variant="primary" onClick={handlePreview} disabled={entering}>
-            <KeyRound className="h-4 w-4" />
-            {entering ? "Starting preview..." : "Preview authenticated dashboard"}
-          </Button>
+          <div className="grid gap-2">
+            <p className="text-xs font-bold uppercase tracking-normal text-muted-foreground">Dev preview</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button variant="primary" onClick={() => handlePreview("admin")} disabled={entering !== null}>
+                <ShieldCheck className="h-4 w-4" />
+                {entering === "admin" ? "Starting..." : "Preview as Admin"}
+              </Button>
+              <Button variant="outline" onClick={() => handlePreview("user")} disabled={entering !== null}>
+                <KeyRound className="h-4 w-4" />
+                {entering === "user" ? "Starting..." : "Preview as User"}
+              </Button>
+            </div>
+          </div>
         ) : null}
       </div>
       {authError ? (
         <p className="mt-4 text-xs leading-5 text-red-600">{authError}</p>
       ) : (
         <p className="mt-4 text-xs leading-5 text-muted-foreground">
-          OAuth redirects require provider credentials in apps/web/.env.local. Preview mode exchanges a dev-only API token so the dashboard stays testable without OAuth.
+          OAuth redirects require provider credentials in apps/web/.env.local. Preview mode exchanges a dev-only API token so the dashboard stays testable without OAuth — sign in as an admin to see the platform console, or as a user for the standard workspace.
         </p>
       )}
     </div>

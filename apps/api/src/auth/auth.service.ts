@@ -30,8 +30,27 @@ export class AuthService {
     };
   }
 
+  /**
+   * Built-in demo/preview identities map to a fixed role so the dashboard can be
+   * explored as either a platform admin or a regular member without OAuth.
+   */
+  private presetRole(email: string): "OWNER" | "ADMIN" | "MEMBER" | null {
+    switch (email) {
+      case "admin@solucien.local":
+        return "ADMIN";
+      case "preview@solucien.local":
+        return "OWNER";
+      case "user@solucien.local":
+        return "MEMBER";
+      default:
+        return null;
+    }
+  }
+
   /** Find-or-create the user (and a default tenant) when the DB is available. */
   private async provisionUser(dto: LoginDto) {
+    const presetRole = this.presetRole(dto.email);
+
     if (!this.prisma.connected) {
       // No database yet — issue a token against an ephemeral identity so the
       // auth flow remains testable in local/preview environments.
@@ -39,9 +58,32 @@ export class AuthService {
         id: "ephemeral",
         email: dto.email,
         name: dto.name ?? null,
-        role: dto.email === "preview@solucien.local" ? "OWNER" : "MEMBER",
+        role: presetRole ?? "MEMBER",
         tenantId: "ephemeral-tenant",
       };
+    }
+
+    // Demo/preview identities are upserted into a shared preview tenant with a
+    // deterministic role (re-login always refreshes the role), so "log in as
+    // admin" and "log in as user" stay distinct and consistent.
+    if (presetRole) {
+      const tenant = await this.prisma.tenant.upsert({
+        where: { slug: "solucien-preview" },
+        update: {},
+        create: { name: "Solucien Preview", slug: "solucien-preview" },
+      });
+
+      return this.prisma.user.upsert({
+        where: { email: dto.email },
+        update: { role: presetRole },
+        create: {
+          email: dto.email,
+          name: dto.name ?? null,
+          provider: dto.provider ?? "preview",
+          role: presetRole,
+          tenantId: tenant.id,
+        },
+      });
     }
 
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });

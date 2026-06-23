@@ -19,6 +19,11 @@ export function canManageMembers(role: string | undefined): boolean {
   return role === "OWNER" || role === "ADMIN";
 }
 
+/** Platform administrators (and owners) can reach the system-wide admin console. */
+export function isPlatformAdmin(role: string | undefined): boolean {
+  return role === "ADMIN" || role === "OWNER";
+}
+
 export function createInvitedMember(input: { name: string; email: string; role: WorkspaceRole }): WorkspaceMember {
   return {
     id: `usr_${Math.random().toString(36).slice(2, 10)}`,

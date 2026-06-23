@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3001 --webpack",
-    "build": "next build --webpack",
+    "dev": "next dev --port 3001 --turbo=false",
+    "build": "next build",
     "start": "next start --port 3001",
     "lint": "eslint",
     "typecheck": "echo \"(docs) no TS check configured\""
@@ -15,7 +15,7 @@
     "@headlessui/react": "^2.2.6",
     "@mdx-js/loader": "^3.1.0",
     "@mdx-js/react": "^3.1.0",
-    "@next/mdx": "16.1.6",
+    "@next/mdx": "^16.1.6",
     "@sindresorhus/slugify": "^2.2.1",
     "@tailwindcss/postcss": "^4.2.4",
     "@tailwindcss/typography": "^0.5.16",

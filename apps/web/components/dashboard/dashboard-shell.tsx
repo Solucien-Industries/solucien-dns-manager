@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AddDomainDialog } from "@/components/dashboard/add-domain-dialog";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { AdminSection } from "@/components/dashboard/sections/admin-section";
 import { DomainsSection } from "@/components/dashboard/sections/domains-section";
 import { MetricsSection } from "@/components/dashboard/sections/metrics-section";
 import { MonitoringSection } from "@/components/dashboard/sections/monitoring-section";
@@ -17,6 +18,7 @@ import {
   type DashboardSection,
   type SettingsTab,
 } from "@/lib/dashboard-nav";
+import { isPlatformAdmin } from "@/lib/workspace-users";
 
 type AuthUser = {
   id: string;
@@ -49,6 +51,8 @@ export function DashboardShell({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [addDomainOpen, setAddDomainOpen] = useState(false);
   const [data, setData] = useState<DashboardData | null>(null);
+
+  const showAdmin = isPlatformAdmin(user?.role);
 
   const refreshData = useCallback(async () => {
     const dashboardData = await getDashboardData(accessToken);
@@ -110,6 +114,7 @@ export function DashboardShell({
           activeSection={activeSection}
           collapsed={sidebarCollapsed}
           mobileOpen={mobileMenuOpen}
+          showAdmin={showAdmin}
           onSectionChange={setActiveSection}
           onToggleCollapsed={handleToggleCollapsed}
           onMobileClose={() => setMobileMenuOpen(false)}
@@ -138,6 +143,7 @@ export function DashboardShell({
           {activeSection === "metrics" ? <MetricsSection accessToken={accessToken} /> : null}
           {activeSection === "monitoring" ? <MonitoringSection accessToken={accessToken} /> : null}
           {activeSection === "smtp" ? <SmtpSection accessToken={accessToken} /> : null}
+          {activeSection === "admin" && showAdmin ? <AdminSection /> : null}
           {activeSection === "settings" ? (
             <SettingsPanel
               accessToken={accessToken}

@@ -26,13 +26,15 @@ type AuthConfig = {
   previewAvailable: boolean;
 };
 
+export type PreviewRole = "admin" | "user";
+
 type AuthContextValue = {
   status: "loading" | "authenticated" | "unauthenticated";
   accessToken: string | null;
   user: AuthUser | null;
   config: AuthConfig | null;
   error: string | null;
-  enterPreview: () => Promise<void>;
+  enterPreview: (role?: PreviewRole) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -104,13 +106,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [previewMode, session?.user?.email, sessionStatus]);
 
-  const enterPreview = useCallback(async () => {
+  const enterPreview = useCallback(async (role: PreviewRole = "user") => {
     setError(null);
     setPreviewMode(true);
+    setExchangeStatus("loading");
 
     try {
       const payload = await readJson<{ accessToken: string; user: AuthUser }>(
-        await fetch("/api/auth/preview", { method: "POST" }),
+        await fetch(`/api/auth/preview?role=${role}`, { method: "POST" }),
       );
 
       setAccessToken(payload.accessToken);

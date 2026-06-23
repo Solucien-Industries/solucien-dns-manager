@@ -9,7 +9,6 @@ import { MetricsSection } from "@/components/dashboard/sections/metrics-section"
 import { MonitoringSection } from "@/components/dashboard/sections/monitoring-section";
 import { OverviewSection } from "@/components/dashboard/sections/overview-section";
 import { RecordsSection } from "@/components/dashboard/sections/records-section";
-import { SmtpSection } from "@/components/dashboard/sections/smtp-section";
 import { SettingsPanel } from "@/components/dashboard/settings/settings-panel";
 import { getDashboardData, type DashboardData } from "@/lib/api";
 import {
@@ -137,7 +136,6 @@ export function DashboardShell({
           ) : null}
           {activeSection === "metrics" ? <MetricsSection accessToken={accessToken} /> : null}
           {activeSection === "monitoring" ? <MonitoringSection accessToken={accessToken} /> : null}
-          {activeSection === "smtp" ? <SmtpSection accessToken={accessToken} /> : null}
           {activeSection === "settings" ? (
             <SettingsPanel
               accessToken={accessToken}

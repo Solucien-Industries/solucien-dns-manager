@@ -20,6 +20,7 @@ export async function exchangeIdentityForToken(input: {
   email: string;
   name?: string;
   provider?: string;
+  clientIp?: string;
 }): Promise<ApiLoginResponse> {
   const res = await fetch(`${API_URL}/api/auth/login`, {
     method: "POST",

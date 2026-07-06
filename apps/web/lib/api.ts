@@ -336,3 +336,161 @@ export async function exportDomainZone(
   if (!res.ok) throw new Error(await readApiError(res));
   return (await res.json()) as { domain: string; format: string; content: string };
 }
+
+// ---------------------------------------------------------------------------
+// Admin console (platform admins only) + notifications + approved locations
+// ---------------------------------------------------------------------------
+
+export type AccountStatus = "ACTIVE" | "WARNED" | "SUSPENDED" | "BANNED";
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  tenantId: string;
+  tenantName: string | null;
+  provider: string | null;
+  createdAt: string | null;
+  isSelf: boolean;
+  status: AccountStatus;
+  statusReason: string | null;
+  suspendedUntil: string | null;
+};
+
+export type ModerationEvent = {
+  id: string;
+  action: string;
+  reason: string;
+  actorId: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+};
+
+export type LoginEvent = {
+  id: string;
+  userId: string;
+  tenantId: string;
+  ip: string;
+  country: string | null;
+  region: string | null;
+  city: string | null;
+  userAgent: string | null;
+  outcome: string;
+  createdAt: string;
+};
+
+export type ActivityEntry = {
+  id: string;
+  userId: string | null;
+  tenantId: string | null;
+  method: string;
+  path: string;
+  statusCode: number;
+  ip: string | null;
+  durationMs: number | null;
+  createdAt: string;
+};
+
+export type ApiKeyAlert = {
+  id: string;
+  apiKeyId: string;
+  tenantId: string;
+  ip: string;
+  country: string | null;
+  path: string | null;
+  createdAt: string;
+};
+
+export type Page<T> = { items: T[]; nextCursor: string | null };
+
+async function apiGet<T>(accessToken: string, path: string): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, { headers: authHeaders(accessToken), cache: "no-store" });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as T;
+}
+
+async function apiPost<T>(accessToken: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as T;
+}
+
+export function adminListUsers(accessToken: string) {
+  return apiGet<AdminUser[]>(accessToken, "/api/admin/users");
+}
+
+export function adminModeration(accessToken: string, userId: string) {
+  return apiGet<ModerationEvent[]>(accessToken, `/api/admin/users/${userId}/moderation`);
+}
+
+export type ModerationAction = "warn" | "suspend" | "ban" | "unsuspend" | "unban";
+
+export function adminModerate(
+  accessToken: string,
+  userId: string,
+  action: ModerationAction,
+  input?: { reason?: string; expiresAt?: string },
+) {
+  return apiPost(accessToken, `/api/admin/users/${userId}/${action}`, input);
+}
+
+export function adminLoginEvents(accessToken: string, limit = 100) {
+  return apiGet<Page<LoginEvent>>(accessToken, `/api/admin/login-events?limit=${limit}`);
+}
+
+export function adminActivity(accessToken: string, limit = 100) {
+  return apiGet<Page<ActivityEntry>>(accessToken, `/api/admin/activity?limit=${limit}`);
+}
+
+export function adminApiKeyAlerts(accessToken: string, limit = 100) {
+  return apiGet<{ items: ApiKeyAlert[] }>(accessToken, `/api/admin/api-key-alerts?limit=${limit}`);
+}
+
+export type ApprovedLocation = {
+  id: string;
+  type: "CIDR" | "COUNTRY";
+  value: string;
+  label: string | null;
+  createdAt: string;
+};
+
+export function listApprovedLocations(accessToken: string) {
+  return apiGet<ApprovedLocation[]>(accessToken, "/api/tenant/approved-locations");
+}
+
+export function createApprovedLocation(
+  accessToken: string,
+  input: { type: "CIDR" | "COUNTRY"; value: string; label?: string },
+) {
+  return apiPost<ApprovedLocation>(accessToken, "/api/tenant/approved-locations", input);
+}
+
+export async function deleteApprovedLocation(accessToken: string, id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/tenant/approved-locations/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+}
+
+export type AppNotification = {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export function listNotifications(accessToken: string) {
+  return apiGet<AppNotification[]>(accessToken, "/api/notifications");
+}
+
+export function markNotificationRead(accessToken: string, id: string) {
+  return apiPost(accessToken, `/api/notifications/${id}/read`);
+}

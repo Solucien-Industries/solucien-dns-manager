@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRight, CircleAlert, Database, Globe2, Plus, Server } from "lucide-react";
+import { ArrowRight, CircleAlert, Globe2, Plus, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { DashboardData } from "@/lib/api";
 import { getMetrics, type MetricsPayload } from "@/lib/api";

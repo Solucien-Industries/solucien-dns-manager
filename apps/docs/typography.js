@@ -1,4 +1,4 @@
-export default {
+const typography = {
   theme: {
     typography: ({ theme }) => ({
       DEFAULT: {
@@ -349,4 +349,6 @@ export default {
       },
     }),
   },
-}
+};
+
+export default typography;

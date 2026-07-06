@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3001 --turbo=false",
-    "build": "next build",
+    "dev": "next dev --port 3001 --webpack",
+    "build": "next build --webpack",
     "start": "next start --port 3001",
     "lint": "eslint",
     "typecheck": "echo \"(docs) no TS check configured\""

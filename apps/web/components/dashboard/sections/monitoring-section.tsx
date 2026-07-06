@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Activity, RefreshCw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getMonitoringStatus, type MonitoringStatus } from "@/lib/api";
@@ -22,7 +22,7 @@ export function MonitoringSection({ accessToken }: MonitoringSectionProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -32,13 +32,13 @@ export function MonitoringSection({ accessToken }: MonitoringSectionProps) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [accessToken]);
 
   useEffect(() => {
     void refresh();
     const timer = window.setInterval(() => void refresh(), 30_000);
     return () => window.clearInterval(timer);
-  }, [accessToken]);
+  }, [refresh]);
 
   return (
     <div className="grid gap-5">

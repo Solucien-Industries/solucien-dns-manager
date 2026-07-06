@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AddDomainDialog } from "@/components/dashboard/add-domain-dialog";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { NotificationBanner } from "@/components/dashboard/notification-banner";
 import { AdminSection } from "@/components/dashboard/sections/admin-section";
 import { DomainsSection } from "@/components/dashboard/sections/domains-section";
 import { MetricsSection } from "@/components/dashboard/sections/metrics-section";
@@ -121,6 +122,7 @@ export function DashboardShell({
         />
 
         <section className="min-w-0 flex-1">
+          <NotificationBanner accessToken={accessToken} />
           {activeSection === "overview" ? (
             <OverviewSection
               accessToken={accessToken}
@@ -143,7 +145,9 @@ export function DashboardShell({
           {activeSection === "metrics" ? <MetricsSection accessToken={accessToken} /> : null}
           {activeSection === "monitoring" ? <MonitoringSection accessToken={accessToken} /> : null}
           {activeSection === "smtp" ? <SmtpSection accessToken={accessToken} /> : null}
-          {activeSection === "admin" && showAdmin ? <AdminSection /> : null}
+          {activeSection === "admin" && showAdmin ? (
+            <AdminSection accessToken={accessToken} currentUserId={user?.id ?? null} />
+          ) : null}
           {activeSection === "settings" ? (
             <SettingsPanel
               accessToken={accessToken}

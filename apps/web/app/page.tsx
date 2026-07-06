@@ -257,9 +257,6 @@ function Header({
             <BookOpen className="h-4 w-4" />
             API docs
           </a>
-          <Button variant="ghost" className="h-10 w-10 px-0" onClick={onThemeChange} aria-label="Toggle theme">
-            {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </Button>
           <Button variant="outline" className="hidden sm:inline-flex" onClick={() => void onEnter()}>
             <LockKeyhole className="h-4 w-4" />
             {authenticated ? "Console" : "Console"}
@@ -269,6 +266,9 @@ function Header({
               Sign out
             </Button>
           ) : null}
+          <Button variant="ghost" className="h-10 w-10 px-0" onClick={onThemeChange} aria-label="Toggle theme">
+            {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
         </div>
       </div>
     </header>

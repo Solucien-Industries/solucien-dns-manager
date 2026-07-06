@@ -11,6 +11,10 @@ async function bootstrap() {
   // Global API prefix so routes live under /api (matches the web client).
   app.setGlobalPrefix("api");
 
+  // Trust the first proxy hop so req.ip reflects the real client (X-Forwarded-For)
+  // behind a load balancer. A fixed hop count (not `true`) avoids IP spoofing.
+  app.getHttpAdapter().getInstance().set("trust proxy", 1);
+
   // Allow the Next.js dev origin (and anything in WEB_ORIGIN) to call the API.
   app.enableCors({
     origin: process.env.WEB_ORIGIN?.split(",") ?? ["http://localhost:3000"],

@@ -32,33 +32,76 @@ enum UserRole {
   MEMBER
 }
 
+/// Moderation state for an account. `status` is a denormalized fast-path cache
+/// used on every login; ModerationEvent is the source-of-truth history.
+enum UserStatus {
+  ACTIVE
+  WARNED
+  SUSPENDED
+  BANNED
+}
+
+enum ModerationAction {
+  WARN
+  SUSPEND
+  BAN
+  UNSUSPEND
+  UNBAN
+}
+
+enum NotificationKind {
+  WARNING
+  SUSPENSION
+  BAN
+  API_KEY_LOCATION
+}
+
+enum LocationRuleType {
+  CIDR
+  COUNTRY
+}
+
 /// A customer workspace. Everything is scoped to a tenant (multi-tenancy).
 model Tenant {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  users     User[]
-  domains   Domain[]
-  apiKeys   ApiKey[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String             @id @default(cuid())
+  name              String
+  slug              String             @unique
+  users             User[]
+  domains           Domain[]
+  apiKeys           ApiKey[]
+  approvedLocations ApprovedLocation[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 }
 
 /// An authenticated user. Credentials come from Auth.js (OAuth) on the web side;
 /// the API issues its own JWTs for service-to-service and session validation.
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String     @id @default(cuid())
+  email        String     @unique
   name         String?
   image        String?
-  role         UserRole @default(MEMBER)
-  provider     String?  // e.g. "google" | "github"
-  passwordHash String?  // optional local credential (mostly OAuth-only)
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role         UserRole   @default(MEMBER)
+  provider     String?    // e.g. "google" | "github"
+  passwordHash String?    // optional local credential (mostly OAuth-only)
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantId     String
   apiKeys      ApiKey[]
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+
+  // Moderation state (see UserStatus). `status` is the fast-path check on login;
+  // ModerationEvent holds the full audit trail.
+  status          UserStatus @default(ACTIVE)
+  statusReason    String?
+  suspendedUntil  DateTime? // null while SUSPENDED = indefinite
+  statusUpdatedAt DateTime?
+
+  moderationsReceived ModerationEvent[] @relation("ModerationTarget")
+  moderationsIssued   ModerationEvent[] @relation("ModerationActor")
+  notifications       Notification[]
+  loginEvents         LoginEvent[]
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   @@index([tenantId])
 }
@@ -115,4 +158,102 @@ model DnsRecord {
   updatedAt DateTime   @updatedAt
 
   @@index([domainId])
+}
+
+/// Audit trail of moderation actions taken against a user (warn/suspend/ban…).
+model ModerationEvent {
+  id        String           @id @default(cuid())
+  action    ModerationAction
+  reason    String
+  target    User             @relation("ModerationTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  targetId  String
+  actor     User?            @relation("ModerationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorId   String?
+  expiresAt DateTime? // set for SUSPEND
+  createdAt DateTime         @default(now())
+
+  @@index([targetId])
+}
+
+/// Persisted in-app alert shown to a user (warnings, suspensions, API-key location notices).
+model Notification {
+  id        String           @id @default(cuid())
+  kind      NotificationKind
+  title     String
+  body      String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  tenantId  String
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt])
+  @@index([tenantId])
+}
+
+/// Where and when a user logged in (or was blocked). Powers the admin login map.
+model LoginEvent {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  tenantId  String
+  ip        String
+  country   String?
+  region    String?
+  city      String?
+  userAgent String?
+  outcome   String // "SUCCESS" | "BLOCKED_SUSPENDED" | "BLOCKED_BANNED"
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([createdAt])
+}
+
+/// Audit of authenticated API activity. Intentionally FK-free so rows survive
+/// user deletion and never fail to write for ephemeral/unknown principals.
+model ActivityLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  tenantId   String?
+  method     String
+  path       String
+  statusCode Int
+  ip         String?
+  durationMs Int?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+/// A tenant's pre-approved location rule for API-key usage (a CIDR range or an
+/// ISO-3166 alpha-2 country code). No rules configured = enforcement disabled.
+model ApprovedLocation {
+  id        String           @id @default(cuid())
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId  String
+  type      LocationRuleType
+  value     String // "203.0.113.0/24" or "CD"
+  label     String?
+  createdAt DateTime         @default(now())
+
+  @@index([tenantId])
+}
+
+/// Records each time an API key is used from outside the tenant's approved
+/// locations (approved=false), plus a sampling of approved use. FK-free by design.
+model ApiKeyUsageEvent {
+  id        String   @id @default(cuid())
+  apiKeyId  String
+  tenantId  String
+  ip        String
+  country   String?
+  approved  Boolean
+  path      String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([apiKeyId])
 }

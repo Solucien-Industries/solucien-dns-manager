@@ -1,11 +1,19 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { ForbiddenException, Injectable, Logger } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../prisma/prisma.service";
+import { GeoIpService } from "../common/geoip.service";
 import { LoginDto } from "./dto/login.dto";
+
+export type LoginContext = {
+  ip: string | null;
+  userAgent: string | null;
+};
 
 /**
  * Exchanges a verified identity (from Auth.js OAuth on the web) for an API JWT.
  * Users are provisioned just-in-time into a default tenant on first login.
+ * Also enforces moderation (suspended/banned users are blocked) and records a
+ * geolocated LoginEvent for the admin console.
  */
 @Injectable()
 export class AuthService {
@@ -14,10 +22,26 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly geoip: GeoIpService,
   ) {}
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, ctx: LoginContext = { ip: null, userAgent: null }) {
     const user = await this.provisionUser(dto);
+    const ip = dto.clientIp ?? ctx.ip;
+
+    // Moderation gate: block suspended (still within window) and banned accounts.
+    const gate = this.evaluateStatus(user);
+    if (gate.blocked) {
+      await this.recordLogin(user, ip, ctx.userAgent, gate.outcome);
+      throw new ForbiddenException(gate.message);
+    }
+    if (gate.autoCleared) {
+      // Suspension window elapsed — lazily restore the account.
+      await this.clearExpiredSuspension(user.id);
+    }
+
+    await this.recordLogin(user, ip, ctx.userAgent, "SUCCESS");
+
     const token = await this.jwt.signAsync({
       sub: user.id,
       email: user.email,
@@ -29,6 +53,74 @@ export class AuthService {
       user: { id: user.id, email: user.email, name: user.name, role: user.role, tenantId: user.tenantId },
     };
   }
+
+  /**
+   * Interpret the persisted status. WARNED never blocks. SUSPENDED blocks until
+   * `suspendedUntil` (null = indefinite); a past expiry auto-clears to ACTIVE.
+   */
+  private evaluateStatus(user: {
+    status?: string;
+    statusReason?: string | null;
+    suspendedUntil?: Date | null;
+  }): { blocked: boolean; autoCleared: boolean; outcome: string; message: string } {
+    const reason = user.statusReason ? ` Reason: ${user.statusReason}` : "";
+    if (user.status === "BANNED") {
+      return { blocked: true, autoCleared: false, outcome: "BLOCKED_BANNED", message: `Your account has been banned.${reason}` };
+    }
+    if (user.status === "SUSPENDED") {
+      const until = user.suspendedUntil ? new Date(user.suspendedUntil) : null;
+      if (until && until.getTime() <= Date.now()) {
+        return { blocked: false, autoCleared: true, outcome: "SUCCESS", message: "" };
+      }
+      const window = until ? ` until ${until.toUTCString()}` : "";
+      return {
+        blocked: true,
+        autoCleared: false,
+        outcome: "BLOCKED_SUSPENDED",
+        message: `Your account is suspended${window}.${reason}`,
+      };
+    }
+    return { blocked: false, autoCleared: false, outcome: "SUCCESS", message: "" };
+  }
+
+  private async clearExpiredSuspension(userId: string): Promise<void> {
+    if (!this.prisma.connected) return;
+    try {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { status: "ACTIVE", statusReason: null, suspendedUntil: null, statusUpdatedAt: new Date() },
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to clear expired suspension for ${userId}: ${(err as Error).message}`);
+    }
+  }
+
+  private async recordLogin(
+    user: { id: string; tenantId: string },
+    ip: string | null,
+    userAgent: string | null,
+    outcome: string,
+  ): Promise<void> {
+    if (!this.prisma.connected || user.id === "ephemeral") return;
+    const geo = this.geoip.lookup(ip);
+    try {
+      await this.prisma.loginEvent.create({
+        data: {
+          userId: user.id,
+          tenantId: user.tenantId,
+          ip: ip ?? "unknown",
+          country: geo?.country ?? null,
+          region: geo?.region ?? null,
+          city: geo?.city ?? null,
+          userAgent: userAgent?.slice(0, 512) ?? null,
+          outcome,
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to record login event for ${user.id}: ${(err as Error).message}`);
+    }
+  }
+
 
   /**
    * Built-in demo/preview identities map to a fixed role so the dashboard can be
@@ -60,6 +152,9 @@ export class AuthService {
         name: dto.name ?? null,
         role: presetRole ?? "MEMBER",
         tenantId: "ephemeral-tenant",
+        status: "ACTIVE" as const,
+        statusReason: null,
+        suspendedUntil: null,
       };
     }
 

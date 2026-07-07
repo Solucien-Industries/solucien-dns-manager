@@ -2,10 +2,12 @@ import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post,
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { OnboardDomainDto } from "./dto/onboard-domain.dto";
 import { SendEmailDto } from "./dto/send-email.dto";
 import { UpdateSmtpSenderDto } from "./dto/update-smtp-sender.dto";
 import { UpdateSmtpServerDto } from "./dto/update-smtp-server.dto";
 import { MailService } from "./mail.service";
+import { SesAdminService } from "./ses-admin.service";
 import { SmtpService } from "./smtp.service";
 
 @ApiTags("smtp")
@@ -16,24 +18,23 @@ export class SmtpController {
   constructor(
     private readonly smtp: SmtpService,
     private readonly mail: MailService,
+    private readonly ses: SesAdminService,
   ) {}
 
-  /** Platform-provided SMTP relay connection details (Resend-style). */
   @Get()
   get(@Req() req: Request) {
     const user = req.user as { tenantId?: string };
     const tenantId = user.tenantId ?? "ephemeral-tenant";
-
     return {
       relay: this.smtp.getRelayConfig(),
       credential: this.smtp.getCredentialView(tenantId),
       sender: this.smtp.getSender(tenantId),
       sendingConfigured: this.mail.isConfigured(),
+      onboardingConfigured: this.ses.isConfigured(),
       description: "Send emails using SMTP instead of the REST API.",
     };
   }
 
-  /** Generate a new SMTP password for this workspace (shown once). */
   @Post("credentials")
   generateCredentials(@Req() req: Request) {
     const user = req.user as { userId?: string; tenantId?: string };
@@ -61,19 +62,14 @@ export class SmtpController {
   async send(@Body() dto: SendEmailDto, @Req() req: Request) {
     const user = req.user as { tenantId?: string };
     const tenantId = user.tenantId ?? "ephemeral-tenant";
-
     if (!dto.text && !dto.html) {
       throw new BadRequestException("Provide a text body, an html body, or both.");
     }
-
     const sender = this.smtp.getSender(tenantId);
     const fromEmail = (dto.fromEmail ?? sender.fromEmail).trim();
     if (!fromEmail) {
-      throw new BadRequestException(
-        "No sender identity set. Save a From email under SMTP settings, or pass fromEmail.",
-      );
+      throw new BadRequestException("No sender identity set. Save a From email under SMTP settings, or pass fromEmail.");
     }
-
     return this.mail.sendMail({
       from: fromEmail,
       fromName: sender.fromName,
@@ -83,6 +79,23 @@ export class SmtpController {
       html: dto.html,
       replyTo: dto.replyTo,
     });
+  }
+
+  /**
+   * Onboard a customer domain for sending: registers it in SES, links it to
+   * this tenant's configuration set (per-tenant reputation), and returns the
+   * DKIM records the customer must add to their DNS.
+   */
+  @Post("domains")
+  onboardDomain(@Body() dto: OnboardDomainDto, @Req() req: Request) {
+    const user = req.user as { tenantId?: string };
+    return this.ses.onboardDomain(dto.domain, user.tenantId ?? "ephemeral-tenant");
+  }
+
+  /** Verification + DKIM status for a customer sending domain. */
+  @Get("domains/:domain")
+  domainStatus(@Param("domain") domain: string) {
+    return this.ses.getDomainStatus(domain);
   }
 
   @Get("servers")

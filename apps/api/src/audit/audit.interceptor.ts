@@ -20,9 +20,9 @@ const SKIP_PATHS = [/^\/api\/health/, /^\/api\/metrics/, /^\/api\/monitoring/, /
  */
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
-  constructor(private readonly audit: AuditService) {}
+  constructor(private readonly audit: AuditService) { }
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     if (context.getType() !== "http") return next.handle();
 
     const req = context.switchToHttp().getRequest<Request>();

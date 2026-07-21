@@ -1,16 +1,14 @@
 
-
 > @solucien/api@0.1.0 build
 > prisma generate && nest build
 
 [2mEnvironment variables loaded from .env[22m
 [2mPrisma schema loaded from prisma/schema.prisma[22m
-
 
-✔ Generated [1mPrisma Client[22m (v6.19.3)[2m to ./../../node_modules/@prisma/client[22m in 295ms
+✔ Generated [1mPrisma Client[22m (v6.19.3)[2m to ./../../node_modules/@prisma/client[22m in 293ms
 
 Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
 
-Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
+Tip: Need your database queries to be 1000x faster? Accelerate offers you that and more: https://pris.ly/tip-2-accelerate
 
 ⠙[1G[0K

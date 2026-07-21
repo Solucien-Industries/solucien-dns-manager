@@ -1,7 +1,15 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { IsISO8601, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 
-export class WarnDto {
+class ModerationPasswordDto {
+  @ApiProperty({ example: "owner-confirmation-password" })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  adminPassword!: string;
+}
+
+export class WarnDto extends ModerationPasswordDto {
   @ApiProperty({ example: "Repeated abuse reports from recipients." })
   @IsString()
   @MinLength(3)
@@ -9,7 +17,7 @@ export class WarnDto {
   reason!: string;
 }
 
-export class BanDto extends WarnDto {}
+export class BanDto extends WarnDto { }
 
 export class SuspendDto extends WarnDto {
   @ApiProperty({

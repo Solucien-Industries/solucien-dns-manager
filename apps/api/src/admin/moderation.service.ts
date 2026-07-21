@@ -5,6 +5,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
+import { timingSafeEqual } from "node:crypto";
 import type { ModerationAction, User, UserStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { MailService } from "../mail/mail.service";
@@ -33,23 +34,27 @@ export type ModerationEventSummary = {
 @Injectable()
 export class ModerationService {
   private readonly logger = new Logger(ModerationService.name);
+  private readonly moderationPassword =
+    process.env.ADMIN_MODERATION_PASSWORD ?? process.env.ADMIN_ACTION_PASSWORD ?? null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly mail: MailService,
-  ) {}
+  ) { }
 
-  async warn(caller: Caller, targetId: string, reason: string) {
+  async warn(caller: Caller, targetId: string, reason: string, adminPassword: string) {
     const target = await this.authorize(caller, targetId);
+    this.assertModerationPassword(adminPassword);
     await this.apply(caller, target, "WARN", "WARNED", reason);
     void this.mail.sendWarning(target.email, reason);
     await this.notify(target, "WARNING", "Account warning", reason);
     return this.currentStatus(target.id);
   }
 
-  async suspend(caller: Caller, targetId: string, reason: string, expiresAt?: Date | null) {
+  async suspend(caller: Caller, targetId: string, reason: string, adminPassword: string, expiresAt?: Date | null) {
     const target = await this.authorize(caller, targetId);
+    this.assertModerationPassword(adminPassword);
     await this.apply(caller, target, "SUSPEND", "SUSPENDED", reason, expiresAt ?? null);
     void this.mail.sendSuspension(target.email, reason, expiresAt ?? null);
     await this.notify(
@@ -61,8 +66,9 @@ export class ModerationService {
     return this.currentStatus(target.id);
   }
 
-  async ban(caller: Caller, targetId: string, reason: string) {
+  async ban(caller: Caller, targetId: string, reason: string, adminPassword: string) {
     const target = await this.authorize(caller, targetId);
+    this.assertModerationPassword(adminPassword);
     await this.apply(caller, target, "BAN", "BANNED", reason);
     void this.mail.sendBan(target.email, reason);
     await this.notify(target, "BAN", "Account banned", reason);
@@ -170,4 +176,20 @@ export class ModerationService {
       suspendedUntil: user?.suspendedUntil?.toISOString() ?? null,
     };
   }
+
+  private assertModerationPassword(input: string): void {
+    if (!this.moderationPassword) {
+      throw new ServiceUnavailableException("Moderation password is not configured.");
+    }
+    if (!safeConstantCompare(input, this.moderationPassword)) {
+      throw new ForbiddenException("Invalid moderation password.");
+    }
+  }
+}
+
+function safeConstantCompare(input: string, expected: string): boolean {
+  const left = Buffer.from(input, "utf8");
+  const right = Buffer.from(expected, "utf8");
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
 }

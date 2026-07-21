@@ -45,13 +45,7 @@ export default function Home() {
   return (
     <main className={cn(dark && "dark")}>
       <div className="min-h-screen bg-background text-foreground transition-colors">
-        {status === "loading" ? (
-          <div className="grid min-h-screen place-items-center bg-background">
-            <div className="rounded-md border border-border bg-panel p-6 text-sm font-semibold animate-pulse text-muted-foreground">
-              Verifying security tokens...
-            </div>
-          </div>
-        ) : status === "authenticated" && accessToken ? (
+        {status === "authenticated" && accessToken ? (
           view === "console" ? (
             <DashboardShell
               accessToken={accessToken}
@@ -75,6 +69,7 @@ export default function Home() {
         ) : (
           <Landing
             dark={dark}
+            isAuthLoading={status === "loading"}
             onEnter={enterPreview}
             authError={error}
             onThemeChange={() => setDark((value) => !value)}
@@ -88,6 +83,7 @@ export default function Home() {
 function Landing({
   dark,
   authenticated = false,
+  isAuthLoading = false,
   userLabel,
   onEnter,
   authError,
@@ -96,6 +92,7 @@ function Landing({
 }: {
   dark: boolean;
   authenticated?: boolean;
+  isAuthLoading?: boolean;
   userLabel?: string;
   onEnter: () => void | Promise<void>;
   authError: string | null;
@@ -121,6 +118,12 @@ function Landing({
               Open console
               <ArrowRight className="h-4 w-4" />
             </Button>
+          </div>
+        </div>
+      ) : isAuthLoading ? (
+        <div className="border-b border-border bg-panel">
+          <div className="mx-auto flex max-w-7xl items-center px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:px-6 lg:px-8">
+            Verifying security session...
           </div>
         </div>
       ) : null}

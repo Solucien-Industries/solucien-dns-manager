@@ -1,5 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsIn, IsOptional, IsString, MaxLength } from "class-validator";
+import { IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 
 export class CreateApprovedLocationDto {
   @ApiProperty({ enum: ["CIDR", "COUNTRY"], example: "COUNTRY" })
@@ -19,4 +19,14 @@ export class CreateApprovedLocationDto {
   @IsString()
   @MaxLength(120)
   label?: string;
+
+  @ApiProperty({
+    example: "my-location-passkey",
+    description:
+      "Password or passkey required before adding a new trusted location. Set LOCATION_APPROVAL_PASSKEY or LOCATION_APPROVAL_PASSWORD in API env.",
+  })
+  @IsString()
+  @MinLength(6)
+  @MaxLength(200)
+  approvalSecret!: string;
 }

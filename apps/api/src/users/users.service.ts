@@ -25,10 +25,19 @@ export type AccountSummary = {
 };
 
 export type AdminAccountSummary = AccountSummary & {
+  accountNumber: string | null;
+  creditCardId: string | null;
   status: string;
   statusReason: string | null;
   suspendedUntil: string | null;
   tenantName: string | null;
+};
+
+type AdminAccountFilter = {
+  q?: string;
+  userId?: string;
+  accountNumber?: string;
+  creditCardId?: string;
 };
 
 /** Owners and platform admins may view and remove other accounts. */
@@ -40,7 +49,7 @@ function isManager(role: string | undefined): boolean {
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   /**
    * Managers (owner/admin) see every account; regular members only see
@@ -84,13 +93,16 @@ export class UsersService {
    * Platform-admin view of every account with moderation status. Restricted to
    * owners/admins (the admin console guards this too, but defend in depth).
    */
-  async adminList(caller: Caller): Promise<AdminAccountSummary[]> {
+  async adminList(caller: Caller, filter: AdminAccountFilter = {}): Promise<AdminAccountSummary[]> {
     if (!isManager(caller.role)) {
       throw new ForbiddenException("Only owners and admins can view all accounts.");
     }
     if (!this.prisma.connected) return [];
 
+    const where = this.adminFilterWhere(filter);
+
     const rows = await this.prisma.user.findMany({
+      where,
       orderBy: { createdAt: "asc" },
       include: { tenant: { select: { name: true } } },
     });
@@ -99,6 +111,8 @@ export class UsersService {
       id: row.id,
       email: row.email,
       name: row.name,
+      accountNumber: row.accountNumber,
+      creditCardId: row.creditCardId,
       role: row.role,
       tenantId: row.tenantId,
       tenantName: row.tenant?.name ?? null,
@@ -109,6 +123,33 @@ export class UsersService {
       statusReason: row.statusReason,
       suspendedUntil: row.suspendedUntil?.toISOString() ?? null,
     }));
+  }
+
+  private adminFilterWhere(filter: AdminAccountFilter) {
+    const and: Array<Record<string, unknown>> = [];
+    if (filter.userId?.trim()) {
+      and.push({ id: filter.userId.trim() });
+    }
+    if (filter.accountNumber?.trim()) {
+      and.push({ accountNumber: filter.accountNumber.trim() });
+    }
+    if (filter.creditCardId?.trim()) {
+      and.push({ creditCardId: filter.creditCardId.trim() });
+    }
+    const q = filter.q?.trim();
+    if (q) {
+      and.push({
+        OR: [
+          { email: { contains: q, mode: "insensitive" as const } },
+          { name: { contains: q, mode: "insensitive" as const } },
+          { id: { contains: q, mode: "insensitive" as const } },
+          { accountNumber: { contains: q, mode: "insensitive" as const } },
+          { creditCardId: { contains: q, mode: "insensitive" as const } },
+        ],
+      });
+    }
+    if (and.length === 0) return undefined;
+    return { AND: and };
   }
 
   /** Delete the caller's own account. Always allowed for an authenticated user. */

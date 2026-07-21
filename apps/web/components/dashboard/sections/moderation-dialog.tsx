@@ -11,7 +11,7 @@ type ModerationDialogProps = {
   targetEmail: string;
   submitting: boolean;
   onClose: () => void;
-  onConfirm: (input: { reason: string; expiresAt?: string }) => void;
+  onConfirm: (input: { reason: string; expiresAt?: string; adminPassword: string }) => void;
 };
 
 const COPY: Record<string, { title: string; verb: string; danger: boolean }> = {
@@ -30,11 +30,13 @@ export function ModerationDialog({
 }: ModerationDialogProps) {
   const [reason, setReason] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
 
   useEffect(() => {
     if (open) {
       setReason("");
       setExpiresAt("");
+      setAdminPassword("");
     }
   }, [open, action]);
 
@@ -47,6 +49,7 @@ export function ModerationDialog({
     onConfirm({
       reason: trimmed,
       expiresAt: action === "suspend" && expiresAt ? new Date(expiresAt).toISOString() : undefined,
+      adminPassword,
     });
   }
 
@@ -84,6 +87,15 @@ export function ModerationDialog({
           </>
         ) : null}
 
+        <label className="mt-4 block text-sm font-semibold">Admin confirmation password</label>
+        <input
+          type="password"
+          value={adminPassword}
+          onChange={(event) => setAdminPassword(event.target.value)}
+          placeholder="Enter admin moderation password"
+          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+        />
+
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="outline" onClick={onClose} disabled={submitting}>
             Cancel
@@ -92,7 +104,7 @@ export function ModerationDialog({
             variant="primary"
             className={cn(copy.danger && "bg-red-600 text-white hover:bg-red-600/90")}
             onClick={handleSubmit}
-            disabled={submitting || reason.trim().length < 3}
+            disabled={submitting || reason.trim().length < 3 || adminPassword.trim().length === 0}
           >
             {submitting ? "Working…" : copy.verb}
           </Button>

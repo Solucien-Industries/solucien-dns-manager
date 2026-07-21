@@ -11,6 +11,7 @@ import {
   ServiceUnavailableException,
   UseGuards,
 } from "@nestjs/common";
+import { timingSafeEqual } from "node:crypto";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import ipaddr from "ipaddr.js";
@@ -29,10 +30,17 @@ import { LocationService } from "./location.service";
 @UseGuards(JwtAuthGuard, ManagerGuard)
 @Controller("tenant/approved-locations")
 export class ApprovedLocationsController {
+  private readonly locationApprovalSecret =
+    process.env.LOCATION_APPROVAL_PASSKEY ??
+    process.env.LOCATION_APPROVAL_PASSWORD ??
+    process.env.ADMIN_MODERATION_PASSWORD ??
+    process.env.ADMIN_ACTION_PASSWORD ??
+    null;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly locations: LocationService,
-  ) {}
+  ) { }
 
   @Get()
   async list(@Req() req: Request) {
@@ -56,6 +64,7 @@ export class ApprovedLocationsController {
     if (!this.prisma.connected) {
       throw new ServiceUnavailableException("Location rules are unavailable.");
     }
+    this.assertLocationApprovalSecret(dto.approvalSecret);
     const value = normaliseValue(dto);
     const tenantId = tenantOf(req);
     const created = await this.prisma.approvedLocation.create({
@@ -71,6 +80,15 @@ export class ApprovedLocationsController {
     };
   }
 
+  private assertLocationApprovalSecret(input: string): void {
+    if (!this.locationApprovalSecret) {
+      throw new ServiceUnavailableException("Location approval passkey is not configured.");
+    }
+    if (!safeConstantCompare(input, this.locationApprovalSecret)) {
+      throw new BadRequestException("Invalid location approval password or passkey.");
+    }
+  }
+
   @Delete(":id")
   async remove(@Param("id") id: string, @Req() req: Request) {
     if (!this.prisma.connected) {
@@ -83,6 +101,13 @@ export class ApprovedLocationsController {
     await this.locations.invalidate(tenantId);
     return { deleted: true, id };
   }
+}
+
+function safeConstantCompare(input: string, expected: string): boolean {
+  const left = Buffer.from(input, "utf8");
+  const right = Buffer.from(expected, "utf8");
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
 }
 
 function tenantOf(req: Request): string {

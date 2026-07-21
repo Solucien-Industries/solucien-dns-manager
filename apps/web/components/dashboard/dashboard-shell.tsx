@@ -5,7 +5,7 @@ import { AddDomainDialog } from "@/components/dashboard/add-domain-dialog";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { NotificationBanner } from "@/components/dashboard/notification-banner";
-import { AdminSection } from "@/components/dashboard/sections/admin-section";
+import { AdminSection, type AdminTab } from "@/components/dashboard/sections/admin-section";
 import { DomainsSection } from "@/components/dashboard/sections/domains-section";
 import { MetricsSection } from "@/components/dashboard/sections/metrics-section";
 import { MonitoringSection } from "@/components/dashboard/sections/monitoring-section";
@@ -47,6 +47,7 @@ export function DashboardShell({
   onGoHome,
 }: DashboardShellProps) {
   const [activeSection, setActiveSection] = useState<DashboardSection>("overview");
+  const [adminTab, setAdminTab] = useState<AdminTab>("users");
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("api");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -88,6 +89,12 @@ export function DashboardShell({
     setSidebarCollapsed((value) => !value);
   }
 
+  function openApprovedLocationsFromNotification() {
+    if (!showAdmin) return;
+    setActiveSection("admin");
+    setAdminTab("locations");
+  }
+
   if (!data) {
     return (
       <div className="grid min-h-screen place-items-center bg-background">
@@ -122,7 +129,10 @@ export function DashboardShell({
         />
 
         <section className="min-w-0 flex-1">
-          <NotificationBanner accessToken={accessToken} />
+          <NotificationBanner
+            accessToken={accessToken}
+            onNavigateToApprovedLocations={showAdmin ? openApprovedLocationsFromNotification : undefined}
+          />
           {activeSection === "overview" ? (
             <OverviewSection
               accessToken={accessToken}
@@ -146,7 +156,12 @@ export function DashboardShell({
           {activeSection === "monitoring" ? <MonitoringSection accessToken={accessToken} /> : null}
           {activeSection === "smtp" ? <SmtpSection accessToken={accessToken} /> : null}
           {activeSection === "admin" && showAdmin ? (
-            <AdminSection accessToken={accessToken} currentUserId={user?.id ?? null} />
+            <AdminSection
+              accessToken={accessToken}
+              currentUserId={user?.id ?? null}
+              activeTab={adminTab}
+              onTabChange={setAdminTab}
+            />
           ) : null}
           {activeSection === "settings" ? (
             <SettingsPanel

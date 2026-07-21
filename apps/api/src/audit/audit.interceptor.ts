@@ -1,7 +1,5 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from "@nestjs/common";
 import type { Request, Response } from "express";
-import { Observable } from "rxjs";
-import { tap } from "rxjs/operators";
 import { clientIp } from "../common/client-ip";
 import { AuditService } from "./audit.service";
 
@@ -22,14 +20,18 @@ const SKIP_PATHS = [/^\/api\/health/, /^\/api\/metrics/, /^\/api\/monitoring/, /
 export class AuditInterceptor implements NestInterceptor {
   constructor(private readonly audit: AuditService) { }
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler) {
     if (context.getType() !== "http") return next.handle();
 
     const req = context.switchToHttp().getRequest<Request>();
     const res = context.switchToHttp().getResponse<Response>();
     const startedAt = Date.now();
+    let recorded = false;
 
     const finish = (statusCode: number) => {
+      if (recorded) return;
+      recorded = true;
+
       const method = req.method.toUpperCase();
       const path = routeTemplate(req);
       if (this.shouldSkip(method, path, statusCode)) return;
@@ -46,14 +48,11 @@ export class AuditInterceptor implements NestInterceptor {
       });
     };
 
-    return next.handle().pipe(
-      tap({
-        next: () => finish(res.statusCode),
-        // On thrown errors the response status may not be set yet; fall back to
-        // the exception status when available, else 500.
-        error: (err: { status?: number }) => finish(err?.status ?? 500),
-      }),
-    );
+    // Audit after the response lifecycle completes, independent of RxJS operator types.
+    res.once("finish", () => finish(res.statusCode));
+    res.once("close", () => finish(res.statusCode || 499));
+
+    return next.handle();
   }
 
   private shouldSkip(method: string, path: string, statusCode: number): boolean {

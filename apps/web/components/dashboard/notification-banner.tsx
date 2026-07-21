@@ -10,10 +10,17 @@ const KIND_STYLES: Record<string, string> = {
   SUSPENSION: "border-orange-500/40 bg-orange-500/10 text-orange-800 dark:text-orange-200",
   BAN: "border-red-500/40 bg-red-500/10 text-red-800 dark:text-red-200",
   API_KEY_LOCATION: "border-red-500/40 bg-red-500/10 text-red-800 dark:text-red-200",
+  LOGIN_LOCATION: "border-yellow-500/40 bg-yellow-500/10 text-yellow-900 dark:text-yellow-100",
 };
 
 /** Shows the current user's unread moderation / security notices, dismissible. */
-export function NotificationBanner({ accessToken }: { accessToken: string }) {
+export function NotificationBanner({
+  accessToken,
+  onNavigateToApprovedLocations,
+}: {
+  accessToken: string;
+  onNavigateToApprovedLocations?: () => void;
+}) {
   const [items, setItems] = useState<AppNotification[]>([]);
 
   const load = useCallback(async () => {
@@ -51,6 +58,15 @@ export function NotificationBanner({ accessToken }: { accessToken: string }) {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold">{item.title}</p>
             <p className="text-sm">{item.body}</p>
+            {item.kind === "LOGIN_LOCATION" ? (
+              <button
+                type="button"
+                onClick={onNavigateToApprovedLocations}
+                className="mt-2 rounded px-2 py-1 text-xs font-semibold underline underline-offset-2 hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                Review in Approved Locations
+              </button>
+            ) : null}
           </div>
           <button
             type="button"

@@ -1,7 +1,10 @@
 import { ForbiddenException, Injectable, Logger } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
+import ipaddr from "ipaddr.js";
 import { PrismaService } from "../prisma/prisma.service";
 import { GeoIpService } from "../common/geoip.service";
+import { NotificationsService } from "../notifications/notifications.service";
+import { MailService } from "../mail/mail.service";
 import { LoginDto } from "./dto/login.dto";
 
 export type LoginContext = {
@@ -23,7 +26,9 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly geoip: GeoIpService,
-  ) {}
+    private readonly notifications: NotificationsService,
+    private readonly mail: MailService,
+  ) { }
 
   async login(dto: LoginDto, ctx: LoginContext = { ip: null, userAgent: null }) {
     const user = await this.provisionUser(dto);
@@ -40,7 +45,8 @@ export class AuthService {
       await this.clearExpiredSuspension(user.id);
     }
 
-    await this.recordLogin(user, ip, ctx.userAgent, "SUCCESS");
+    const login = await this.recordLogin(user, ip, ctx.userAgent, "SUCCESS");
+    await this.reconcileApprovedLoginLocation(user, login.ip, login.country);
 
     const token = await this.jwt.signAsync({
       sub: user.id,
@@ -100,15 +106,18 @@ export class AuthService {
     ip: string | null,
     userAgent: string | null,
     outcome: string,
-  ): Promise<void> {
-    if (!this.prisma.connected || user.id === "ephemeral") return;
+  ): Promise<{ ip: string; country: string | null }> {
+    const resolvedIp = ip ?? "unknown";
     const geo = this.geoip.lookup(ip);
+    if (!this.prisma.connected || user.id === "ephemeral") {
+      return { ip: resolvedIp, country: geo?.country ?? null };
+    }
     try {
       await this.prisma.loginEvent.create({
         data: {
           userId: user.id,
           tenantId: user.tenantId,
-          ip: ip ?? "unknown",
+          ip: resolvedIp,
           country: geo?.country ?? null,
           region: geo?.region ?? null,
           city: geo?.city ?? null,
@@ -118,6 +127,70 @@ export class AuthService {
       });
     } catch (err) {
       this.logger.warn(`Failed to record login event for ${user.id}: ${(err as Error).message}`);
+    }
+    return { ip: resolvedIp, country: geo?.country ?? null };
+  }
+
+  private async reconcileApprovedLoginLocation(
+    user: { id: string; tenantId: string },
+    ip: string,
+    country: string | null,
+  ): Promise<void> {
+    if (!this.prisma.connected || user.id === "ephemeral") return;
+
+    try {
+      const rules = await this.prisma.approvedLocation.findMany({ where: { tenantId: user.tenantId } });
+      if (rules.length === 0) {
+        const firstRule = toFirstLocationRule(ip, country);
+        if (!firstRule) return;
+        await this.prisma.approvedLocation.create({
+          data: {
+            tenantId: user.tenantId,
+            type: firstRule.type,
+            value: firstRule.value,
+            label: "First successful login location",
+          },
+        });
+        return;
+      }
+
+      const isApproved = rules.some((rule) => {
+        if (rule.type === "COUNTRY") {
+          return country != null && rule.value.toUpperCase() === country.toUpperCase();
+        }
+        return ip !== "unknown" && cidrMatch(ip, rule.value);
+      });
+      if (isApproved) return;
+
+      const recipients = await this.prisma.user.findMany({
+        where: { tenantId: user.tenantId, role: { in: ["OWNER", "ADMIN"] } },
+        select: { id: true, email: true },
+      });
+      if (recipients.length === 0) return;
+
+      const where = country ? `${country} (${ip})` : ip;
+      const body =
+        `New login detected from ${where}. Review this sign-in. If trusted, add it to approved locations. ` +
+        `If untrusted, remove access and change passwords immediately.`;
+
+      await Promise.all(
+        recipients.map((recipient) =>
+          this.notifications.create({
+            userId: recipient.id,
+            tenantId: user.tenantId,
+            kind: "LOGIN_LOCATION",
+            title: "New login location detected",
+            body,
+          }),
+        ),
+      );
+
+      void this.mail.sendNewLoginLocationAlert(
+        recipients.map((recipient) => recipient.email),
+        { ip, country },
+      );
+    } catch (err) {
+      this.logger.warn(`Failed to reconcile login location for ${user.id}: ${(err as Error).message}`);
     }
   }
 
@@ -200,5 +273,30 @@ export class AuthService {
         tenantId: tenant.id,
       },
     });
+  }
+}
+
+function toFirstLocationRule(ip: string, country: string | null): { type: "COUNTRY" | "CIDR"; value: string } | null {
+  if (country) return { type: "COUNTRY", value: country.toUpperCase() };
+  if (ip === "unknown") return null;
+  try {
+    const parsed = ipaddr.parse(ip);
+    return {
+      type: "CIDR",
+      value: `${ip}/${parsed.kind() === "ipv4" ? "32" : "128"}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function cidrMatch(ip: string, cidr: string): boolean {
+  try {
+    const addr = ipaddr.parse(ip);
+    const range = ipaddr.parseCIDR(cidr);
+    if (addr.kind() !== range[0].kind()) return false;
+    return (addr as ipaddr.IPv4).match(range as [ipaddr.IPv4, number]);
+  } catch {
+    return false;
   }
 }

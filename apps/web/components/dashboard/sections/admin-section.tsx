@@ -5,6 +5,7 @@ import { MapPin, Plus, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
+  adminAccountActivity,
   adminActivity,
   adminApiKeyAlerts,
   adminListUsers,
@@ -15,6 +16,7 @@ import {
   deleteApprovedLocation,
   listApprovedLocations,
   type AccountStatus,
+  type AccountActivity,
   type ActivityEntry,
   type AdminUser,
   type ApiKeyAlert,
@@ -28,11 +30,13 @@ import { ModerationDialog } from "./moderation-dialog";
 type AdminSectionProps = {
   accessToken: string;
   currentUserId: string | null;
+  activeTab?: AdminTab;
+  onTabChange?: (tab: AdminTab) => void;
 };
 
-type Tab = "users" | "logins" | "activity" | "alerts" | "locations";
+export type AdminTab = "users" | "logins" | "activity" | "alerts" | "locations";
 
-const TABS: { id: Tab; label: string }[] = [
+const TABS: { id: AdminTab; label: string }[] = [
   { id: "users", label: "Accounts" },
   { id: "logins", label: "Login activity" },
   { id: "activity", label: "Audit log" },
@@ -47,8 +51,17 @@ const STATUS_STYLES: Record<AccountStatus, string> = {
   BANNED: "bg-red-500/10 text-red-600 border-red-500/30 dark:text-red-400",
 };
 
-export function AdminSection({ accessToken, currentUserId }: AdminSectionProps) {
-  const [tab, setTab] = useState<Tab>("users");
+export function AdminSection({ accessToken, currentUserId, activeTab, onTabChange }: AdminSectionProps) {
+  const [internalTab, setInternalTab] = useState<AdminTab>("users");
+  const tab = activeTab ?? internalTab;
+
+  function selectTab(next: AdminTab) {
+    if (onTabChange) {
+      onTabChange(next);
+      return;
+    }
+    setInternalTab(next);
+  }
 
   return (
     <div className="grid gap-5">
@@ -64,7 +77,7 @@ export function AdminSection({ accessToken, currentUserId }: AdminSectionProps) 
           <button
             key={item.id}
             type="button"
-            onClick={() => setTab(item.id)}
+            onClick={() => selectTab(item.id)}
             className={cn(
               "rounded px-3 py-1.5 text-sm font-semibold transition",
               tab === item.id ? "bg-background text-foreground" : "text-muted-foreground hover:text-foreground",
@@ -147,14 +160,33 @@ function fmt(value: string | null): string {
 // --- Accounts tab ----------------------------------------------------------
 
 function UsersTab({ accessToken, currentUserId }: { accessToken: string; currentUserId: string | null }) {
-  const { data, loading, error, refresh } = useAsync(() => adminListUsers(accessToken), [accessToken]);
+  const [query, setQuery] = useState("");
+  const [userIdFilter, setUserIdFilter] = useState("");
+  const [accountNumberFilter, setAccountNumberFilter] = useState("");
+  const [creditCardIdFilter, setCreditCardIdFilter] = useState("");
+  const { data, loading, error, refresh } = useAsync(
+    () =>
+      adminListUsers(accessToken, {
+        q: query,
+        userId: userIdFilter,
+        accountNumber: accountNumberFilter,
+        creditCardId: creditCardIdFilter,
+      }),
+    [accessToken, query, userIdFilter, accountNumberFilter, creditCardIdFilter],
+  );
   const [dialog, setDialog] = useState<{ user: AdminUser; action: "warn" | "suspend" | "ban" } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   const [history, setHistory] = useState<ModerationEvent[] | null>(null);
+  const [accountActivity, setAccountActivity] = useState<AccountActivity | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
 
-  async function moderate(user: AdminUser, action: ModerationAction, input?: { reason?: string; expiresAt?: string }) {
+  async function moderate(
+    user: AdminUser,
+    action: ModerationAction,
+    input?: { reason?: string; expiresAt?: string; adminPassword?: string },
+  ) {
     setSubmitting(true);
     try {
       await adminModerate(accessToken, user.id, action, input);
@@ -187,6 +219,19 @@ function UsersTab({ accessToken, currentUserId }: { accessToken: string; current
     }
   }
 
+  async function loadAccountActivity(input: { userId?: string; accountNumber?: string; creditCardId?: string }) {
+    setActivityLoading(true);
+    try {
+      const next = await adminAccountActivity(accessToken, { ...input, limit: 100 });
+      setAccountActivity(next);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Could not load account activity.");
+      setAccountActivity(null);
+    } finally {
+      setActivityLoading(false);
+    }
+  }
+
   return (
     <div className="grid gap-3">
       <SectionHeader
@@ -200,11 +245,39 @@ function UsersTab({ accessToken, currentUserId }: { accessToken: string; current
       ) : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
+      <div className="grid gap-2 rounded-md border border-border bg-panel p-3 md:grid-cols-4">
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search name/email/id"
+          className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+        />
+        <input
+          value={userIdFilter}
+          onChange={(event) => setUserIdFilter(event.target.value)}
+          placeholder="Filter by user ID"
+          className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+        />
+        <input
+          value={accountNumberFilter}
+          onChange={(event) => setAccountNumberFilter(event.target.value)}
+          placeholder="Filter by account number"
+          className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+        />
+        <input
+          value={creditCardIdFilter}
+          onChange={(event) => setCreditCardIdFilter(event.target.value)}
+          placeholder="Filter by credit card ID"
+          className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+        />
+      </div>
+
       <Panel>
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-border text-xs font-bold uppercase text-muted-foreground">
             <tr>
               <th className="px-4 py-3">User</th>
+              <th className="px-4 py-3">Account IDs</th>
               <th className="px-4 py-3">Tenant</th>
               <th className="px-4 py-3">Role</th>
               <th className="px-4 py-3">Status</th>
@@ -214,98 +287,115 @@ function UsersTab({ accessToken, currentUserId }: { accessToken: string; current
           <tbody>
             {(data ?? []).map((user) => (
               <Fragment key={user.id}>
-              <tr className="border-b border-border align-top last:border-b-0">
-                <td className="px-4 py-3">
-                  <p className="font-semibold">{user.name ?? user.email}</p>
-                  <p className="text-xs text-muted-foreground">{user.email}</p>
-                </td>
-                <td className="px-4 py-3">{user.tenantName ?? user.tenantId}</td>
-                <td className="px-4 py-3">{user.role}</td>
-                <td className="px-4 py-3">
-                  <span className={cn("rounded border px-2 py-0.5 text-xs font-bold", STATUS_STYLES[user.status])}>
-                    {user.status}
-                  </span>
-                  {user.statusReason ? (
-                    <p className="mt-1 max-w-[220px] text-xs text-muted-foreground">{user.statusReason}</p>
-                  ) : null}
-                  {user.suspendedUntil ? (
-                    <p className="mt-0.5 text-xs text-muted-foreground">until {fmt(user.suspendedUntil)}</p>
-                  ) : null}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-end gap-1.5">
-                    <Button
-                      variant="ghost"
-                      className="h-8 px-2 text-xs"
-                      onClick={() => void toggleHistory(user.id)}
-                    >
-                      {historyFor === user.id ? "Hide" : "History"}
-                    </Button>
-                    {user.id === currentUserId ? (
-                    <span className="text-xs text-muted-foreground">(you)</span>
-                  ) : (
-                    <div className="flex flex-wrap justify-end gap-1.5">
-                      {user.status !== "BANNED" ? (
-                        <>
-                          <Button variant="outline" className="h-8 px-2 text-xs" onClick={() => setDialog({ user, action: "warn" })}>
-                            Warn
-                          </Button>
-                          {user.status === "SUSPENDED" ? (
-                            <Button variant="outline" className="h-8 px-2 text-xs" onClick={() => moderate(user, "unsuspend")}>
-                              Unsuspend
-                            </Button>
+                <tr className="border-b border-border align-top last:border-b-0">
+                  <td className="px-4 py-3">
+                    <p className="font-semibold">{user.name ?? user.email}</p>
+                    <p className="text-xs text-muted-foreground">{user.email}</p>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs">
+                    <p>{user.accountNumber ?? "—"}</p>
+                    <p>{user.creditCardId ?? "—"}</p>
+                  </td>
+                  <td className="px-4 py-3">{user.tenantName ?? user.tenantId}</td>
+                  <td className="px-4 py-3">{user.role}</td>
+                  <td className="px-4 py-3">
+                    <span className={cn("rounded border px-2 py-0.5 text-xs font-bold", STATUS_STYLES[user.status])}>
+                      {user.status}
+                    </span>
+                    {user.statusReason ? (
+                      <p className="mt-1 max-w-[220px] text-xs text-muted-foreground">{user.statusReason}</p>
+                    ) : null}
+                    {user.suspendedUntil ? (
+                      <p className="mt-0.5 text-xs text-muted-foreground">until {fmt(user.suspendedUntil)}</p>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      <Button
+                        variant="ghost"
+                        className="h-8 px-2 text-xs"
+                        onClick={() => void toggleHistory(user.id)}
+                      >
+                        {historyFor === user.id ? "Hide" : "History"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="h-8 px-2 text-xs"
+                        onClick={() =>
+                          void loadAccountActivity({
+                            userId: user.id,
+                            accountNumber: user.accountNumber ?? undefined,
+                            creditCardId: user.creditCardId ?? undefined,
+                          })
+                        }
+                      >
+                        Open Activity
+                      </Button>
+                      {user.id === currentUserId ? (
+                        <span className="text-xs text-muted-foreground">(you)</span>
+                      ) : (
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          {user.status !== "BANNED" ? (
+                            <>
+                              <Button variant="outline" className="h-8 px-2 text-xs" onClick={() => setDialog({ user, action: "warn" })}>
+                                Warn
+                              </Button>
+                              {user.status === "SUSPENDED" ? (
+                                <Button variant="outline" className="h-8 px-2 text-xs" onClick={() => moderate(user, "unsuspend")}>
+                                  Unsuspend
+                                </Button>
+                              ) : (
+                                <Button variant="outline" className="h-8 px-2 text-xs" onClick={() => setDialog({ user, action: "suspend" })}>
+                                  Suspend
+                                </Button>
+                              )}
+                              <Button
+                                variant="outline"
+                                className="h-8 border-red-500/40 px-2 text-xs text-red-600 hover:bg-red-500/10"
+                                onClick={() => setDialog({ user, action: "ban" })}
+                              >
+                                Ban
+                              </Button>
+                            </>
                           ) : (
-                            <Button variant="outline" className="h-8 px-2 text-xs" onClick={() => setDialog({ user, action: "suspend" })}>
-                              Suspend
+                            <Button variant="outline" className="h-8 px-2 text-xs" onClick={() => moderate(user, "unban")}>
+                              Unban
                             </Button>
                           )}
-                          <Button
-                            variant="outline"
-                            className="h-8 border-red-500/40 px-2 text-xs text-red-600 hover:bg-red-500/10"
-                            onClick={() => setDialog({ user, action: "ban" })}
-                          >
-                            Ban
-                          </Button>
-                        </>
-                      ) : (
-                        <Button variant="outline" className="h-8 px-2 text-xs" onClick={() => moderate(user, "unban")}>
-                          Unban
-                        </Button>
+                        </div>
                       )}
                     </div>
-                  )}
-                  </div>
-                </td>
-              </tr>
-              {historyFor === user.id ? (
-                <tr className="border-b border-border bg-panel/60 last:border-b-0">
-                  <td colSpan={5} className="px-4 py-3">
-                    {history === null ? (
-                      <p className="text-xs text-muted-foreground">Loading history…</p>
-                    ) : history.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">No moderation history for this account.</p>
-                    ) : (
-                      <ul className="grid gap-1.5">
-                        {history.map((event) => (
-                          <li key={event.id} className="flex flex-wrap items-baseline gap-2 text-xs">
-                            <span className="font-mono font-semibold">{event.action}</span>
-                            <span className="text-muted-foreground">{fmt(event.createdAt)}</span>
-                            {event.expiresAt ? (
-                              <span className="text-muted-foreground">→ until {fmt(event.expiresAt)}</span>
-                            ) : null}
-                            <span className="w-full text-muted-foreground sm:w-auto">{event.reason}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
                   </td>
                 </tr>
-              ) : null}
+                {historyFor === user.id ? (
+                  <tr className="border-b border-border bg-panel/60 last:border-b-0">
+                    <td colSpan={6} className="px-4 py-3">
+                      {history === null ? (
+                        <p className="text-xs text-muted-foreground">Loading history…</p>
+                      ) : history.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No moderation history for this account.</p>
+                      ) : (
+                        <ul className="grid gap-1.5">
+                          {history.map((event) => (
+                            <li key={event.id} className="flex flex-wrap items-baseline gap-2 text-xs">
+                              <span className="font-mono font-semibold">{event.action}</span>
+                              <span className="text-muted-foreground">{fmt(event.createdAt)}</span>
+                              {event.expiresAt ? (
+                                <span className="text-muted-foreground">→ until {fmt(event.expiresAt)}</span>
+                              ) : null}
+                              <span className="w-full text-muted-foreground sm:w-auto">{event.reason}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                  </tr>
+                ) : null}
               </Fragment>
             ))}
             {!loading && (data ?? []).length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                <td colSpan={6} className="px-4 py-6 text-center text-sm text-muted-foreground">
                   No accounts found.
                 </td>
               </tr>
@@ -313,6 +403,79 @@ function UsersTab({ accessToken, currentUserId }: { accessToken: string; current
           </tbody>
         </table>
       </Panel>
+
+      <div className="rounded-md border border-border bg-panel p-4">
+        <h3 className="text-sm font-semibold">Selected Account Activity</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Click Open Activity on any account row, or use the filters above to narrow by user ID, account number, or credit card ID.
+        </p>
+        {activityLoading ? <p className="mt-2 text-sm text-muted-foreground">Loading account activity…</p> : null}
+        {!activityLoading && accountActivity?.account ? (
+          <div className="mt-3 grid gap-3">
+            <div className="rounded-md border border-border bg-background p-3 text-sm">
+              <p className="font-semibold">{accountActivity.account.name ?? accountActivity.account.email}</p>
+              <p className="text-xs text-muted-foreground">{accountActivity.account.email}</p>
+              <p className="mt-1 font-mono text-xs">user: {accountActivity.account.id}</p>
+              <p className="font-mono text-xs">acct: {accountActivity.account.accountNumber ?? "—"}</p>
+              <p className="font-mono text-xs">card: {accountActivity.account.creditCardId ?? "—"}</p>
+            </div>
+
+            <div className="grid gap-2 lg:grid-cols-2">
+              <Panel>
+                <table className="min-w-full text-left text-xs">
+                  <thead className="border-b border-border text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2">Login events</th>
+                      <th className="px-3 py-2">Location</th>
+                      <th className="px-3 py-2">Outcome</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accountActivity.loginEvents.map((event) => (
+                      <tr key={event.id} className="border-b border-border last:border-b-0">
+                        <td className="px-3 py-2">{fmt(event.createdAt)}</td>
+                        <td className="px-3 py-2">{[event.city, event.region, event.country].filter(Boolean).join(", ") || event.ip}</td>
+                        <td className="px-3 py-2 font-mono">{event.outcome}</td>
+                      </tr>
+                    ))}
+                    {accountActivity.loginEvents.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-3 py-3 text-muted-foreground">No login activity found.</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </Panel>
+
+              <Panel>
+                <table className="min-w-full text-left text-xs">
+                  <thead className="border-b border-border text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2">Audit events</th>
+                      <th className="px-3 py-2">Action</th>
+                      <th className="px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accountActivity.activity.map((entry) => (
+                      <tr key={entry.id} className="border-b border-border last:border-b-0">
+                        <td className="px-3 py-2">{fmt(entry.createdAt)}</td>
+                        <td className="px-3 py-2 font-mono">{entry.method} {entry.path}</td>
+                        <td className="px-3 py-2 font-mono">{entry.statusCode}</td>
+                      </tr>
+                    ))}
+                    {accountActivity.activity.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-3 py-3 text-muted-foreground">No audit activity found.</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </Panel>
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       <ModerationDialog
         open={dialog !== null}
@@ -503,17 +666,24 @@ function LocationsTab({ accessToken }: { accessToken: string }) {
   const [type, setType] = useState<"COUNTRY" | "CIDR">("COUNTRY");
   const [value, setValue] = useState("");
   const [label, setLabel] = useState("");
+  const [approvalSecret, setApprovalSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   async function add() {
-    if (!value.trim()) return;
+    if (!value.trim() || !approvalSecret.trim()) return;
     setBusy(true);
     setFormError(null);
     try {
-      await createApprovedLocation(accessToken, { type, value: value.trim(), label: label.trim() || undefined });
+      await createApprovedLocation(accessToken, {
+        type,
+        value: value.trim(),
+        label: label.trim() || undefined,
+        approvalSecret: approvalSecret.trim(),
+      });
       setValue("");
       setLabel("");
+      setApprovalSecret("");
       await refresh();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Could not add rule.");
@@ -576,11 +746,24 @@ function LocationsTab({ accessToken }: { accessToken: string }) {
               className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
             />
           </div>
-          <Button onClick={add} disabled={busy || !value.trim()}>
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-xs font-bold uppercase text-muted-foreground">Password or passkey</label>
+            <input
+              type="password"
+              value={approvalSecret}
+              onChange={(event) => setApprovalSecret(event.target.value)}
+              placeholder="Confirm before trusting location"
+              className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+            />
+          </div>
+          <Button onClick={add} disabled={busy || !value.trim() || !approvalSecret.trim()}>
             <Plus className="h-4 w-4" />
             Add
           </Button>
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          For security, adding a trusted location requires your location approval password/passkey.
+        </p>
         {formError ? <p className="mt-2 text-sm text-red-600">{formError}</p> : null}
       </div>
 

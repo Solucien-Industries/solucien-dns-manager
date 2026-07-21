@@ -54,6 +54,7 @@ enum NotificationKind {
   SUSPENSION
   BAN
   API_KEY_LOCATION
+  LOGIN_LOCATION
 }
 
 enum LocationRuleType {
@@ -80,6 +81,8 @@ model User {
   id           String     @id @default(cuid())
   email        String     @unique
   name         String?
+  accountNumber String?
+  creditCardId  String?
   image        String?
   role         UserRole   @default(MEMBER)
   provider     String?    // e.g. "google" | "github"
@@ -104,6 +107,8 @@ model User {
   updatedAt    DateTime   @updatedAt
 
   @@index([tenantId])
+  @@index([accountNumber])
+  @@index([creditCardId])
 }
 
 /// Programmatic access key for automation (hashed at rest).

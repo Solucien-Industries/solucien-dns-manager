@@ -116,6 +116,21 @@ export class MailService {
       ),
     });
   }
+
+  sendNewLoginLocationAlert(
+    to: string | string[],
+    details: { ip: string; country: string | null },
+  ): Promise<void> {
+    const where = details.country ? `${details.country} (${details.ip})` : details.ip;
+    return this.send({
+      to,
+      subject: "Security alert: New login location detected",
+      html: notice(
+        "New login location",
+        `A login was detected from <strong>${where}</strong>, which is outside your approved locations. If this was you, add the location to your approved list. If not, secure the account and rotate passwords.`,
+      ),
+    });
+  }
 }
 
 function notice(heading: string, message: string, reason?: string): string {

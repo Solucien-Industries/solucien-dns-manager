@@ -20,17 +20,23 @@ export class AdminController {
     private readonly moderation: ModerationService,
     private readonly audit: AuditService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) { }
 
   /** All accounts across tenants with moderation status. */
   @Get("users")
-  listUsers(@Req() req: Request) {
-    return this.users.adminList(callerFrom(req));
+  listUsers(
+    @Req() req: Request,
+    @Query("q") q?: string,
+    @Query("userId") userId?: string,
+    @Query("accountNumber") accountNumber?: string,
+    @Query("creditCardId") creditCardId?: string,
+  ) {
+    return this.users.adminList(callerFrom(req), { q, userId, accountNumber, creditCardId });
   }
 
   @Post("users/:id/warn")
   warn(@Param("id") id: string, @Body() dto: WarnDto, @Req() req: Request) {
-    return this.moderation.warn(callerFrom(req), id, dto.reason);
+    return this.moderation.warn(callerFrom(req), id, dto.reason, dto.adminPassword);
   }
 
   @Post("users/:id/suspend")
@@ -39,13 +45,14 @@ export class AdminController {
       callerFrom(req),
       id,
       dto.reason,
+      dto.adminPassword,
       dto.expiresAt ? new Date(dto.expiresAt) : null,
     );
   }
 
   @Post("users/:id/ban")
   ban(@Param("id") id: string, @Body() dto: BanDto, @Req() req: Request) {
-    return this.moderation.ban(callerFrom(req), id, dto.reason);
+    return this.moderation.ban(callerFrom(req), id, dto.reason, dto.adminPassword);
   }
 
   @Post("users/:id/unsuspend")
@@ -67,20 +74,53 @@ export class AdminController {
   loginEvents(
     @Query("userId") userId?: string,
     @Query("tenantId") tenantId?: string,
+    @Query("accountNumber") accountNumber?: string,
+    @Query("creditCardId") creditCardId?: string,
     @Query("limit") limit?: string,
     @Query("cursor") cursor?: string,
   ) {
-    return this.audit.listLoginEvents({ userId, tenantId, limit: limit ? Number(limit) : undefined, cursor });
+    return this.audit.listLoginEvents({
+      userId,
+      tenantId,
+      accountNumber,
+      creditCardId,
+      limit: limit ? Number(limit) : undefined,
+      cursor,
+    });
   }
 
   @Get("activity")
   activity(
     @Query("userId") userId?: string,
     @Query("tenantId") tenantId?: string,
+    @Query("accountNumber") accountNumber?: string,
+    @Query("creditCardId") creditCardId?: string,
     @Query("limit") limit?: string,
     @Query("cursor") cursor?: string,
   ) {
-    return this.audit.listActivity({ userId, tenantId, limit: limit ? Number(limit) : undefined, cursor });
+    return this.audit.listActivity({
+      userId,
+      tenantId,
+      accountNumber,
+      creditCardId,
+      limit: limit ? Number(limit) : undefined,
+      cursor,
+    });
+  }
+
+  @Get("account-activity")
+  accountActivity(
+    @Query("userId") userId?: string,
+    @Query("accountNumber") accountNumber?: string,
+    @Query("creditCardId") creditCardId?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.audit.listAccountActivity({
+      userId,
+      accountNumber,
+      creditCardId,
+      limit: limit ? Number(limit) : undefined,
+    });
   }
 
   /** API keys used outside a tenant's approved locations. */

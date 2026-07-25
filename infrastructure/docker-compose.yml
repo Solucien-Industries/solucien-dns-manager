@@ -92,8 +92,9 @@ services:
       PDNS_API_URL: http://powerdns:8081
       PDNS_API_KEY: 1132d3c60d9af09306782c5329856db2350ce9cced371ebe
       PDNS_SERVER_ID: localhost
-    # Apply migrations (idempotent) then start the server.
-    command: sh -c "npx prisma migrate deploy && node dist/main.js"
+    # Sync the schema (this project uses `prisma db push`, not migrations
+    # — there is no prisma/migrations directory) then start the server.
+    command: sh -c "npx prisma db push --skip-generate && node dist/main.js"
     ports:
       - "4000:4000"
 

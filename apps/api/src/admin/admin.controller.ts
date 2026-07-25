@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Body, Query, Req, UseGuards } from "@nestjs/common";
+import { Controller, Delete, Get, Param, Post, Body, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -7,8 +7,10 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { UsersService } from "../users/users.service";
 import { AdminGuard } from "./admin.guard";
+import { AdminInvitesService } from "./admin-invites.service";
 import { ModerationService } from "./moderation.service";
 import { BanDto, SuspendDto, WarnDto } from "./dto/moderation.dto";
+import { GrantAdminDto } from "./dto/grant-admin.dto";
 
 @ApiTags("admin")
 @ApiBearerAuth()
@@ -20,7 +22,26 @@ export class AdminController {
     private readonly moderation: ModerationService,
     private readonly audit: AuditService,
     private readonly prisma: PrismaService,
+    private readonly adminInvites: AdminInvitesService,
   ) { }
+
+  /** Everyone currently holding platform ADMIN, plus not-yet-consumed invites. */
+  @Get("admins")
+  listAdmins() {
+    return this.adminInvites.list();
+  }
+
+  /** Grant ADMIN to an email — instantly if they have an account, else on their first login. */
+  @Post("admins")
+  grantAdmin(@Body() dto: GrantAdminDto, @Req() req: Request) {
+    return this.adminInvites.grant(callerFrom(req), dto.email);
+  }
+
+  /** Revoke a pending (not yet consumed) admin invite. */
+  @Delete("admins/:email")
+  revokeAdminInvite(@Param("email") email: string) {
+    return this.adminInvites.revokeInvite(email);
+  }
 
   /** All accounts across tenants with moderation status. */
   @Get("users")

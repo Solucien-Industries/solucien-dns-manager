@@ -13,6 +13,12 @@ export type LoginContext = {
 };
 
 /**
+ * The permanent platform admin. Configurable via env for other deployments;
+ * defaults to the bootstrap address for this workspace. Case-insensitive.
+ */
+const BOOTSTRAP_ADMIN_EMAIL = (process.env.PLATFORM_ADMIN_EMAIL ?? "becky.malaak@solucien.co.ze").toLowerCase();
+
+/**
  * Exchanges a verified identity (from Auth.js OAuth on the web) for an API JWT.
  * Users are provisioned just-in-time into a default tenant on first login.
  * Also enforces moderation (suspended/banned users are blocked) and records a
@@ -212,6 +218,23 @@ export class AuthService {
     }
   }
 
+  /**
+   * True when this email should hold platform ADMIN: the permanent bootstrap
+   * admin, or a pending invite from an existing admin. Consumes (deletes) the
+   * invite, if any — it's a one-time grant, not a durable allowlist.
+   */
+  private async resolveAdminGrant(email: string): Promise<boolean> {
+    const normalized = email.toLowerCase();
+    if (normalized === BOOTSTRAP_ADMIN_EMAIL) return true;
+    if (!this.prisma.connected) return false;
+
+    const invite = await this.prisma.adminInvite.findUnique({ where: { email: normalized } });
+    if (!invite) return false;
+
+    await this.prisma.adminInvite.delete({ where: { id: invite.id } }).catch(() => undefined);
+    return true;
+  }
+
   /** Find-or-create the user (and a default tenant) when the DB is available. */
   private async provisionUser(dto: LoginDto) {
     const presetRole = this.presetRole(dto.email);
@@ -219,11 +242,12 @@ export class AuthService {
     if (!this.prisma.connected) {
       // No database yet — issue a token against an ephemeral identity so the
       // auth flow remains testable in local/preview environments.
+      const isBootstrapAdmin = dto.email.toLowerCase() === BOOTSTRAP_ADMIN_EMAIL;
       return {
         id: "ephemeral",
         email: dto.email,
         name: dto.name ?? null,
-        role: presetRole ?? "MEMBER",
+        role: presetRole ?? (isBootstrapAdmin ? "ADMIN" : "MEMBER"),
         tenantId: "ephemeral-tenant",
         status: "ACTIVE" as const,
         statusReason: null,
@@ -255,7 +279,16 @@ export class AuthService {
     }
 
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (existing) return existing;
+    if (existing) {
+      // Retroactively honor a fresh bootstrap-email change or a just-created
+      // invite for an account that already existed.
+      if (existing.role !== "ADMIN" && (await this.resolveAdminGrant(dto.email))) {
+        return this.prisma.user.update({ where: { id: existing.id }, data: { role: "ADMIN" } });
+      }
+      return existing;
+    }
+
+    const grantAdmin = await this.resolveAdminGrant(dto.email);
 
     const slug = dto.email.split("@")[1]?.replace(/[^a-z0-9]/gi, "-").toLowerCase() ?? "tenant";
     const tenant = await this.prisma.tenant.upsert({
@@ -269,7 +302,9 @@ export class AuthService {
         email: dto.email,
         name: dto.name ?? null,
         provider: dto.provider ?? null,
-        role: "OWNER",
+        // New real signups only ever get OWNER of their own new tenant — never
+        // platform ADMIN — unless they're the bootstrap admin or hold an invite.
+        role: grantAdmin ? "ADMIN" : "OWNER",
         tenantId: tenant.id,
       },
     });

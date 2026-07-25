@@ -40,9 +40,12 @@ type AdminAccountFilter = {
   creditCardId?: string;
 };
 
-/** Owners and platform admins may view and remove other accounts. */
+/**
+ * Platform admins may view and remove any account across every tenant.
+ * OWNER is a tenant-scoped role and has no cross-tenant power here.
+ */
 function isManager(role: string | undefined): boolean {
-  return role === "OWNER" || role === "ADMIN";
+  return role === "ADMIN";
 }
 
 @Injectable()
@@ -52,9 +55,9 @@ export class UsersService {
   constructor(private readonly prisma: PrismaService) { }
 
   /**
-   * Managers (owner/admin) see every account; regular members only see
-   * themselves. Returns an empty-ish self record when the DB is unavailable so
-   * the settings screen still renders in preview/local mode.
+   * Platform admins see every account across every tenant; everyone else only
+   * sees themselves. Returns an empty-ish self record when the DB is
+   * unavailable so the settings screen still renders in preview/local mode.
    */
   async list(caller: Caller): Promise<AccountSummary[]> {
     if (!this.prisma.connected) {
@@ -91,11 +94,11 @@ export class UsersService {
 
   /**
    * Platform-admin view of every account with moderation status. Restricted to
-   * owners/admins (the admin console guards this too, but defend in depth).
+   * platform admins (the admin console guards this too, but defend in depth).
    */
   async adminList(caller: Caller, filter: AdminAccountFilter = {}): Promise<AdminAccountSummary[]> {
     if (!isManager(caller.role)) {
-      throw new ForbiddenException("Only owners and admins can view all accounts.");
+      throw new ForbiddenException("Only platform admins can view all accounts.");
     }
     if (!this.prisma.connected) return [];
 
@@ -171,10 +174,10 @@ export class UsersService {
     return { deleted: true, id: caller.userId };
   }
 
-  /** Delete another account by id. Restricted to owners/admins. */
+  /** Delete another account by id. Restricted to platform admins. */
   async deleteById(caller: Caller, targetId: string): Promise<{ deleted: true; id: string }> {
     if (!isManager(caller.role)) {
-      throw new ForbiddenException("Only owners and admins can delete other accounts.");
+      throw new ForbiddenException("Only platform admins can delete other accounts.");
     }
 
     if (targetId === caller.userId) {
@@ -189,10 +192,6 @@ export class UsersService {
     const target = await this.prisma.user.findUnique({ where: { id: targetId } });
     if (!target) {
       throw new NotFoundException("Account not found.");
-    }
-
-    if (target.role === "OWNER" && caller.role !== "OWNER") {
-      throw new ForbiddenException("Only an owner can delete an owner account.");
     }
 
     await this.prisma.user.delete({ where: { id: targetId } });

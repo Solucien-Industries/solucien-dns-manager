@@ -233,6 +233,16 @@ model ActivityLog {
   @@index([createdAt])
 }
 
+/// A pending grant of platform ADMIN access for an email that hasn't signed in
+/// yet. Created by an existing admin (see AdminController); consumed (deleted)
+/// the moment that email's first login provisions its User record.
+model AdminInvite {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  invitedById String?
+  createdAt   DateTime @default(now())
+}
+
 /// A tenant's pre-approved location rule for API-key usage (a CIDR range or an
 /// ISO-3166 alpha-2 country code). No rules configured = enforcement disabled.
 model ApprovedLocation {

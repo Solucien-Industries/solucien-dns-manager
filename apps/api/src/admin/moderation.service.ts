@@ -12,8 +12,9 @@ import { MailService } from "../mail/mail.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import type { Caller } from "../users/users.service";
 
+/** Platform-wide moderation is restricted to ADMIN; OWNER is tenant-scoped. */
 function isManager(role: string | undefined): boolean {
-  return role === "OWNER" || role === "ADMIN";
+  return role === "ADMIN";
 }
 
 export type ModerationEventSummary = {
@@ -89,7 +90,7 @@ export class ModerationService {
 
   async history(caller: Caller, targetId: string): Promise<ModerationEventSummary[]> {
     if (!isManager(caller.role)) {
-      throw new ForbiddenException("Only owners and admins can view moderation history.");
+      throw new ForbiddenException("Only platform admins can view moderation history.");
     }
     if (!this.prisma.connected) return [];
     const rows = await this.prisma.moderationEvent.findMany({
@@ -148,10 +149,10 @@ export class ModerationService {
     });
   }
 
-  /** Load the target, enforce manager gating + owner/self protections. */
+  /** Load the target, enforce manager gating + self protection. */
   private async authorize(caller: Caller, targetId: string): Promise<User> {
     if (!isManager(caller.role)) {
-      throw new ForbiddenException("Only owners and admins can moderate accounts.");
+      throw new ForbiddenException("Only platform admins can moderate accounts.");
     }
     if (!this.prisma.connected) {
       throw new ServiceUnavailableException("Account directory is unavailable.");
@@ -161,9 +162,6 @@ export class ModerationService {
     }
     const target = await this.prisma.user.findUnique({ where: { id: targetId } });
     if (!target) throw new NotFoundException("Account not found.");
-    if (target.role === "OWNER" && caller.role !== "OWNER") {
-      throw new ForbiddenException("Only an owner can moderate an owner account.");
-    }
     return target;
   }
 

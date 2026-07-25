@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Check, ChevronRight, Copy, Globe2, Server, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DomainVerificationPanel } from "@/components/dashboard/domain-verification-panel";
@@ -39,15 +39,20 @@ export function AddDomainDialog({
   const normalized = useMemo(() => normalizeDomainName(name), [name]);
   const valid = isValidDomainName(normalized);
 
-  useEffect(() => {
-    if (!open) return;
-    setStep("domain");
-    setName("");
-    setOwner(defaultOwner);
-    setCreated(null);
-    setError(null);
-    setSubmitting(false);
-  }, [defaultOwner, open]);
+  // Adjust state during render when the dialog (re)opens, instead of syncing
+  // via an Effect (see https://react.dev/learn/you-might-not-need-an-effect).
+  const [prevKey, setPrevKey] = useState({ open, defaultOwner });
+  if (prevKey.open !== open || prevKey.defaultOwner !== defaultOwner) {
+    setPrevKey({ open, defaultOwner });
+    if (open) {
+      setStep("domain");
+      setName("");
+      setOwner(defaultOwner);
+      setCreated(null);
+      setError(null);
+      setSubmitting(false);
+    }
+  }
 
   if (!open) return null;
 

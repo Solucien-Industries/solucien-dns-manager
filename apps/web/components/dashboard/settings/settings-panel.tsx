@@ -106,8 +106,26 @@ function ApiSettingsTab({ accessToken }: { accessToken: string }) {
   }, [accessToken]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let cancelled = false;
+
+    listApiKeys(accessToken)
+      .then((result) => {
+        if (cancelled) return;
+        setKeys(result);
+        setError(null);
+      })
+      .catch((refreshError) => {
+        if (cancelled) return;
+        setError(refreshError instanceof Error ? refreshError.message : "Failed to load API keys.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
 
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();

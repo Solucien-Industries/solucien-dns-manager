@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { listNotifications, markNotificationRead, type AppNotification } from "@/lib/api";
@@ -23,18 +23,20 @@ export function NotificationBanner({
 }) {
   const [items, setItems] = useState<AppNotification[]>([]);
 
-  const load = useCallback(async () => {
-    try {
-      const all = await listNotifications(accessToken);
-      setItems(all.filter((item) => item.readAt === null));
-    } catch {
-      // best-effort — a missing API shouldn't break the dashboard
-    }
-  }, [accessToken]);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    listNotifications(accessToken)
+      .then((all) => {
+        if (cancelled) return;
+        setItems(all.filter((item) => item.readAt === null));
+      })
+      .catch(() => {
+        // best-effort — a missing API shouldn't break the dashboard
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
 
   async function dismiss(id: string) {
     setItems((current) => current.filter((item) => item.id !== id));

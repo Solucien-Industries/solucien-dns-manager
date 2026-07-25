@@ -99,29 +99,41 @@ export function AdminSection({ accessToken, currentUserId, activeTab, onTabChang
 
 // --- shared bits -----------------------------------------------------------
 
-function useAsync<T>(loader: () => Promise<T>, deps: unknown[]) {
+function useAsync<T>(loader: () => Promise<T>) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const run = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setData(await loader());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data.");
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
-    void run();
-  }, [run]);
+    let cancelled = false;
 
-  return { data, loading, error, refresh: run };
+    loader()
+      .then((result) => {
+        if (cancelled) return;
+        setData(result);
+        setError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load data.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loader, version]);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    setVersion((v) => v + 1);
+  }, []);
+
+  return { data, loading, error, refresh };
 }
 
 function SectionHeader({
@@ -165,14 +177,16 @@ function UsersTab({ accessToken, currentUserId }: { accessToken: string; current
   const [accountNumberFilter, setAccountNumberFilter] = useState("");
   const [creditCardIdFilter, setCreditCardIdFilter] = useState("");
   const { data, loading, error, refresh } = useAsync(
-    () =>
-      adminListUsers(accessToken, {
-        q: query,
-        userId: userIdFilter,
-        accountNumber: accountNumberFilter,
-        creditCardId: creditCardIdFilter,
-      }),
-    [accessToken, query, userIdFilter, accountNumberFilter, creditCardIdFilter],
+    useCallback(
+      () =>
+        adminListUsers(accessToken, {
+          q: query,
+          userId: userIdFilter,
+          accountNumber: accountNumberFilter,
+          creditCardId: creditCardIdFilter,
+        }),
+      [accessToken, query, userIdFilter, accountNumberFilter, creditCardIdFilter],
+    ),
   );
   const [dialog, setDialog] = useState<{ user: AdminUser; action: "warn" | "suspend" | "ban" } | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -492,7 +506,7 @@ function UsersTab({ accessToken, currentUserId }: { accessToken: string; current
 // --- Login activity tab ----------------------------------------------------
 
 function LoginsTab({ accessToken }: { accessToken: string }) {
-  const { data, loading, error, refresh } = useAsync(() => adminLoginEvents(accessToken), [accessToken]);
+  const { data, loading, error, refresh } = useAsync(useCallback(() => adminLoginEvents(accessToken), [accessToken]));
   const events: LoginEvent[] = data?.items ?? [];
 
   return (
@@ -553,7 +567,7 @@ function LoginsTab({ accessToken }: { accessToken: string }) {
 // --- Audit log tab ---------------------------------------------------------
 
 function ActivityTab({ accessToken }: { accessToken: string }) {
-  const { data, loading, error, refresh } = useAsync(() => adminActivity(accessToken), [accessToken]);
+  const { data, loading, error, refresh } = useAsync(useCallback(() => adminActivity(accessToken), [accessToken]));
   const rows: ActivityEntry[] = data?.items ?? [];
 
   return (
@@ -609,7 +623,7 @@ function ActivityTab({ accessToken }: { accessToken: string }) {
 // --- API-key alerts tab ----------------------------------------------------
 
 function AlertsTab({ accessToken }: { accessToken: string }) {
-  const { data, loading, error, refresh } = useAsync(() => adminApiKeyAlerts(accessToken), [accessToken]);
+  const { data, loading, error, refresh } = useAsync(useCallback(() => adminApiKeyAlerts(accessToken), [accessToken]));
   const rows: ApiKeyAlert[] = data?.items ?? [];
 
   return (
@@ -662,7 +676,7 @@ function AlertsTab({ accessToken }: { accessToken: string }) {
 // --- Approved locations tab ------------------------------------------------
 
 function LocationsTab({ accessToken }: { accessToken: string }) {
-  const { data, loading, error, refresh } = useAsync(() => listApprovedLocations(accessToken), [accessToken]);
+  const { data, loading, error, refresh } = useAsync(useCallback(() => listApprovedLocations(accessToken), [accessToken]));
   const [type, setType] = useState<"COUNTRY" | "CIDR">("COUNTRY");
   const [value, setValue] = useState("");
   const [label, setLabel] = useState("");

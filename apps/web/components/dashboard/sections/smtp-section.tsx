@@ -71,8 +71,29 @@ export function SmtpSection({ accessToken }: SmtpSectionProps) {
   }, [accessToken]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let cancelled = false;
+
+    Promise.all([getSmtpConfig(accessToken), listSmtpServers(accessToken)])
+      .then(([nextConfig, nextServers]) => {
+        if (cancelled) return;
+        setConfig(nextConfig);
+        setServers(nextServers);
+        setFromEmail(nextConfig.sender.fromEmail);
+        setFromName(nextConfig.sender.fromName);
+        setError(null);
+      })
+      .catch((refreshError) => {
+        if (cancelled) return;
+        setError(refreshError instanceof Error ? refreshError.message : "Failed to load SMTP settings.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
 
   if (loading && !config) {
     return <p className="text-sm text-muted-foreground">Loading SMTP relay...</p>;

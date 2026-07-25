@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ModerationAction } from "@/lib/api";
@@ -32,13 +32,17 @@ export function ModerationDialog({
   const [expiresAt, setExpiresAt] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
 
-  useEffect(() => {
+  // Adjust state during render when the dialog opens for a new action,
+  // instead of syncing via an Effect (see https://react.dev/learn/you-might-not-need-an-effect).
+  const [prevKey, setPrevKey] = useState({ open, action });
+  if (prevKey.open !== open || prevKey.action !== action) {
+    setPrevKey({ open, action });
     if (open) {
       setReason("");
       setExpiresAt("");
       setAdminPassword("");
     }
-  }, [open, action]);
+  }
 
   if (!open || !action) return null;
   const copy = COPY[action];

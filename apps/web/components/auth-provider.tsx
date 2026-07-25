@@ -75,6 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (previewMode) return;
 
     if (sessionStatus !== "authenticated" || !session?.user?.email) {
+      // Synchronously clearing local auth state when the external NextAuth
+      // session drops is intentional here, not an accidental render loop.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAccessToken(null);
       setUser(null);
       setExchangeStatus("idle");

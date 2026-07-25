@@ -35,10 +35,28 @@ export function MonitoringSection({ accessToken }: MonitoringSectionProps) {
   }, [accessToken]);
 
   useEffect(() => {
-    void refresh();
+    let cancelled = false;
+
+    getMonitoringStatus(accessToken)
+      .then((result) => {
+        if (cancelled) return;
+        setStatus(result);
+        setError(null);
+      })
+      .catch((refreshError) => {
+        if (cancelled) return;
+        setError(refreshError instanceof Error ? refreshError.message : "Failed to load monitoring data.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
     const timer = window.setInterval(() => void refresh(), 30_000);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [accessToken, refresh]);
 
   return (
     <div className="grid gap-5">
@@ -64,9 +82,11 @@ export function MonitoringSection({ accessToken }: MonitoringSectionProps) {
             </div>
             <div>
               <p className="font-semibold capitalize">Overall status: {status.overall}</p>
-              <p className="text-sm text-muted-foreground">
-                Last checked {new Date(status.checks[0]?.checkedAt ?? Date.now()).toLocaleTimeString()}
-              </p>
+              {status.checks[0]?.checkedAt ? (
+                <p className="text-sm text-muted-foreground">
+                  Last checked {new Date(status.checks[0].checkedAt).toLocaleTimeString()}
+                </p>
+              ) : null}
             </div>
           </div>
         </section>

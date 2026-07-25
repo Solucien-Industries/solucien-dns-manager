@@ -19,7 +19,6 @@ import {
   type DashboardSection,
   type SettingsTab,
 } from "@/lib/dashboard-nav";
-import { isPlatformAdmin } from "@/lib/workspace-users";
 
 type AuthUser = {
   id: string;
@@ -36,6 +35,8 @@ type DashboardShellProps = {
   onThemeChange: () => void;
   onSignOut: () => Promise<void>;
   onGoHome: () => void;
+  /** Whether to show the platform admin console nav/section (see page.tsx's admin/tenant chooser). */
+  showAdminNav: boolean;
 };
 
 export function DashboardShell({
@@ -45,6 +46,7 @@ export function DashboardShell({
   onThemeChange,
   onSignOut,
   onGoHome,
+  showAdminNav,
 }: DashboardShellProps) {
   const [activeSection, setActiveSection] = useState<DashboardSection>("overview");
   const [adminTab, setAdminTab] = useState<AdminTab>("users");
@@ -54,7 +56,7 @@ export function DashboardShell({
   const [addDomainOpen, setAddDomainOpen] = useState(false);
   const [data, setData] = useState<DashboardData | null>(null);
 
-  const showAdmin = isPlatformAdmin(user?.role);
+  const showAdmin = showAdminNav;
 
   const refreshData = useCallback(async () => {
     const dashboardData = await getDashboardData(accessToken);
@@ -62,7 +64,10 @@ export function DashboardShell({
   }, [accessToken]);
 
   useEffect(() => {
+    // Read after mount (not a lazy useState initializer) so the server-rendered
+    // and first-client-render markup match; localStorage isn't available on the server.
     const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (stored === "true") setSidebarCollapsed(true);
   }, []);
 
@@ -82,8 +87,14 @@ export function DashboardShell({
   }, [mobileMenuOpen]);
 
   useEffect(() => {
-    void refreshData();
-  }, [refreshData]);
+    let cancelled = false;
+    getDashboardData(accessToken).then((dashboardData) => {
+      if (!cancelled) setData(dashboardData);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
 
   function handleToggleCollapsed() {
     setSidebarCollapsed((value) => !value);

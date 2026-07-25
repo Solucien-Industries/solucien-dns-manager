@@ -48,24 +48,51 @@ export async function exchangeIdentityForToken(input: {
   provider?: string;
   clientIp?: string;
 }): Promise<ApiLoginResponse> {
+  return postToAuthExchange("/api/auth/login", input);
+}
+
+/** Server-side only: create a local email/password account and log in. */
+export async function registerWithPassword(input: {
+  email: string;
+  password: string;
+  name?: string;
+  clientIp?: string;
+}): Promise<ApiLoginResponse> {
+  return postToAuthExchange("/api/auth/register", input);
+}
+
+/** Server-side only: log in with a local email/password account. */
+export async function loginWithPassword(input: {
+  email: string;
+  password: string;
+  clientIp?: string;
+}): Promise<ApiLoginResponse> {
+  return postToAuthExchange("/api/auth/password-login", input);
+}
+
+async function postToAuthExchange(path: string, body: Record<string, unknown>): Promise<ApiLoginResponse> {
   let lastError: string | null = null;
 
   for (const endpoint of exchangeEndpoints()) {
     try {
-      const res = await fetch(`${endpoint.baseUrl}/api/auth/login`, {
+      const res = await fetch(`${endpoint.baseUrl}${path}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Auth-Exchange-Secret": getAuthExchangeSecret(),
         },
-        body: JSON.stringify(input),
+        body: JSON.stringify(body),
         cache: "no-store",
         signal: AbortSignal.timeout(5000),
       });
 
       if (!res.ok) {
-        const detail = await res.text().catch(() => "");
-        lastError = `API login failed via ${endpoint.label} (${res.status})${detail ? `: ${detail}` : ""}`;
+        const detail = await res
+          .clone()
+          .json()
+          .then((body: { message?: string }) => body.message)
+          .catch(() => res.text().catch(() => ""));
+        lastError = detail || `Request failed via ${endpoint.label} (${res.status}).`;
         continue;
       }
 
@@ -73,10 +100,10 @@ export async function exchangeIdentityForToken(input: {
     } catch (error) {
       lastError =
         error instanceof Error
-          ? `API login failed via ${endpoint.label}: ${error.message}`
-          : `API login failed via ${endpoint.label}.`;
+          ? `Request failed via ${endpoint.label}: ${error.message}`
+          : `Request failed via ${endpoint.label}.`;
     }
   }
 
-  throw new Error(lastError ?? "API login failed.");
+  throw new Error(lastError ?? "Request failed.");
 }

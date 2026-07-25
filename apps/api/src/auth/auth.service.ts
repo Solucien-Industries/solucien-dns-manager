@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Injectable, Logger, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import ipaddr from "ipaddr.js";
 import { PrismaService } from "../prisma/prisma.service";
@@ -6,6 +6,9 @@ import { GeoIpService } from "../common/geoip.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { MailService } from "../mail/mail.service";
 import { LoginDto } from "./dto/login.dto";
+import { PasswordLoginDto } from "./dto/password-login.dto";
+import { RegisterDto } from "./dto/register.dto";
+import { hashPassword, verifyPassword } from "./password.util";
 
 export type LoginContext = {
   ip: string | null;
@@ -38,12 +41,74 @@ export class AuthService {
 
   async login(dto: LoginDto, ctx: LoginContext = { ip: null, userAgent: null }) {
     const user = await this.provisionUser(dto);
-    const ip = dto.clientIp ?? ctx.ip;
+    return this.finishLogin(user, dto.clientIp ?? ctx.ip, ctx.userAgent);
+  }
 
+  /** Create a new local (email/password) account and immediately log it in. */
+  async register(dto: RegisterDto, ctx: LoginContext = { ip: null, userAgent: null }) {
+    if (!this.prisma.connected) {
+      throw new ForbiddenException("Account registration is unavailable right now.");
+    }
+
+    const email = dto.email.toLowerCase();
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      // Never let registration attach a password to an account it doesn't
+      // already own the credentials for (would let anyone hijack an OAuth
+      // account just by knowing its email).
+      throw new ConflictException("An account with this email already exists.");
+    }
+
+    const grantAdmin = await this.resolveAdminGrant(email);
+    const passwordHash = await hashPassword(dto.password);
+
+    const slug = email.split("@")[1]?.replace(/[^a-z0-9]/gi, "-").toLowerCase() ?? "tenant";
+    const tenant = await this.prisma.tenant.upsert({
+      where: { slug },
+      update: {},
+      create: { name: dto.name ?? email, slug },
+    });
+
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        name: dto.name ?? null,
+        provider: "password",
+        passwordHash,
+        role: grantAdmin ? "ADMIN" : "OWNER",
+        tenantId: tenant.id,
+      },
+    });
+
+    return this.finishLogin(user, dto.clientIp ?? ctx.ip, ctx.userAgent);
+  }
+
+  /** Log in with a previously-registered email/password. */
+  async loginWithPassword(dto: PasswordLoginDto, ctx: LoginContext = { ip: null, userAgent: null }) {
+    if (!this.prisma.connected) {
+      throw new ForbiddenException("Password login is unavailable right now.");
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() } });
+    // Same generic message whether the account doesn't exist, has no password
+    // set (OAuth-only), or the password is wrong — don't leak which.
+    if (!user?.passwordHash || !(await verifyPassword(dto.password, user.passwordHash))) {
+      throw new UnauthorizedException("Invalid email or password.");
+    }
+
+    return this.finishLogin(user, dto.clientIp ?? ctx.ip, ctx.userAgent);
+  }
+
+  /** Shared tail of every login path: moderation gate, audit, JWT issuance. */
+  private async finishLogin(
+    user: Awaited<ReturnType<AuthService["provisionUser"]>>,
+    ip: string | null,
+    userAgent: string | null,
+  ) {
     // Moderation gate: block suspended (still within window) and banned accounts.
     const gate = this.evaluateStatus(user);
     if (gate.blocked) {
-      await this.recordLogin(user, ip, ctx.userAgent, gate.outcome);
+      await this.recordLogin(user, ip, userAgent, gate.outcome);
       throw new ForbiddenException(gate.message);
     }
     if (gate.autoCleared) {
@@ -51,7 +116,7 @@ export class AuthService {
       await this.clearExpiredSuspension(user.id);
     }
 
-    const login = await this.recordLogin(user, ip, ctx.userAgent, "SUCCESS");
+    const login = await this.recordLogin(user, ip, userAgent, "SUCCESS");
     await this.reconcileApprovedLoginLocation(user, login.ip, login.country);
 
     const token = await this.jwt.signAsync({

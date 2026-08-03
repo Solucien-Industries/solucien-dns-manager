@@ -7,6 +7,7 @@ import {
   Key,
   Mail,
   Settings,
+  Shield,
   ShieldCheck,
   Users,
   type LucideIcon,
@@ -19,6 +20,7 @@ export type DashboardSection =
   | "metrics"
   | "monitoring"
   | "smtp"
+  | "admin"
   | "settings";
 
 export type SettingsTab = "api" | "billing" | "users";
@@ -44,6 +46,13 @@ export const MAIN_NAV_ITEMS: NavItem[] = [
   { id: "monitoring", label: "Monitoring", icon: ShieldCheck },
   { id: "smtp", label: "SMTP", icon: Mail },
 ];
+
+/** Platform admin console — only shown to ADMIN/OWNER roles (see isPlatformAdmin). */
+export const ADMIN_NAV_ITEM: NavItem = {
+  id: "admin",
+  label: "Admin",
+  icon: Shield,
+};
 
 export const SETTINGS_NAV_ITEM: NavItem = {
   id: "settings",

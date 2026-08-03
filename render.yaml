@@ -1,0 +1,55 @@
+# Render Blueprint for the SDM API.
+# Deploy: Render dashboard -> New -> Blueprint -> select this repo.
+#
+# Not covered here (no managed Render product for it): PowerDNS. Host it
+# separately (e.g. the `powerdns` service in infrastructure/docker-compose.yml
+# on your own box, or a managed PowerDNS provider) and fill in PDNS_API_URL /
+# PDNS_API_KEY below once it's reachable.
+#
+# This project applies its Prisma schema with `db push` (no migrations dir),
+# so the pre-deploy step below runs that instead of `migrate deploy`.
+
+services:
+  - type: web
+    name: sdm-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /api/health
+    preDeployCommand: npx prisma db push --schema /app/apps/api/prisma/schema.prisma --skip-generate
+    envVars:
+      - key: WEB_ORIGIN
+        sync: false # set to your Vercel frontend URL
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: AUTH_EXCHANGE_SECRET
+        sync: false # must byte-for-byte match AUTH_EXCHANGE_SECRET on the Vercel side
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sdm-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: sdm-redis
+          property: connectionString
+      - key: PDNS_API_URL
+        sync: false
+      - key: PDNS_API_KEY
+        sync: false
+      - key: PDNS_SERVER_ID
+        value: localhost
+
+  - type: redis
+    name: sdm-redis
+    plan: starter
+    ipAllowList: []
+
+databases:
+  - name: sdm-postgres
+    plan: starter
+    databaseName: sdm
+    user: sdm

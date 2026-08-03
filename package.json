@@ -11,10 +11,15 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "start": "npm --workspace @solucien/api run start",
+    "start:api": "npm --workspace @solucien/api run start"
   },
   "devDependencies": {
     "turbo": "^2.5.4",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "next": "^16.2.10"
   }
 }

@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { AuthController } from "./auth.controller";
 import { AuthExchangeGuard } from "./auth-exchange.guard";
 import { AuthService } from "./auth.service";
@@ -9,6 +10,7 @@ import { JwtStrategy } from "./jwt.strategy";
 @Module({
   imports: [
     PassportModule,
+    NotificationsModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET ?? "dev-insecure-secret-change-me",
       // Cast: env vars are plain strings; @nestjs/jwt expects the `ms` template type.
@@ -19,4 +21,4 @@ import { JwtStrategy } from "./jwt.strategy";
   providers: [AuthService, AuthExchangeGuard, JwtStrategy],
   exports: [AuthService],
 })
-export class AuthModule {}
+export class AuthModule { }

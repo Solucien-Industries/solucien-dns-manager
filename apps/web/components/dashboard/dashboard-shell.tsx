@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { AddDomainDialog } from "@/components/dashboard/add-domain-dialog";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { NotificationBanner } from "@/components/dashboard/notification-banner";
+import { AdminSection, type AdminTab } from "@/components/dashboard/sections/admin-section";
 import { DomainsSection } from "@/components/dashboard/sections/domains-section";
 import { MetricsSection } from "@/components/dashboard/sections/metrics-section";
 import { MonitoringSection } from "@/components/dashboard/sections/monitoring-section";
@@ -33,6 +35,8 @@ type DashboardShellProps = {
   onThemeChange: () => void;
   onSignOut: () => Promise<void>;
   onGoHome: () => void;
+  /** Whether to show the platform admin console nav/section (see page.tsx's admin/tenant chooser). */
+  showAdminNav: boolean;
 };
 
 export function DashboardShell({
@@ -42,13 +46,17 @@ export function DashboardShell({
   onThemeChange,
   onSignOut,
   onGoHome,
+  showAdminNav,
 }: DashboardShellProps) {
   const [activeSection, setActiveSection] = useState<DashboardSection>("overview");
+  const [adminTab, setAdminTab] = useState<AdminTab>("users");
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("api");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [addDomainOpen, setAddDomainOpen] = useState(false);
   const [data, setData] = useState<DashboardData | null>(null);
+
+  const showAdmin = showAdminNav;
 
   const refreshData = useCallback(async () => {
     const dashboardData = await getDashboardData(accessToken);
@@ -56,7 +64,10 @@ export function DashboardShell({
   }, [accessToken]);
 
   useEffect(() => {
+    // Read after mount (not a lazy useState initializer) so the server-rendered
+    // and first-client-render markup match; localStorage isn't available on the server.
     const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (stored === "true") setSidebarCollapsed(true);
   }, []);
 
@@ -76,11 +87,23 @@ export function DashboardShell({
   }, [mobileMenuOpen]);
 
   useEffect(() => {
-    void refreshData();
-  }, [refreshData]);
+    let cancelled = false;
+    getDashboardData(accessToken).then((dashboardData) => {
+      if (!cancelled) setData(dashboardData);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
 
   function handleToggleCollapsed() {
     setSidebarCollapsed((value) => !value);
+  }
+
+  function openApprovedLocationsFromNotification() {
+    if (!showAdmin) return;
+    setActiveSection("admin");
+    setAdminTab("locations");
   }
 
   if (!data) {
@@ -110,12 +133,17 @@ export function DashboardShell({
           activeSection={activeSection}
           collapsed={sidebarCollapsed}
           mobileOpen={mobileMenuOpen}
+          showAdmin={showAdmin}
           onSectionChange={setActiveSection}
           onToggleCollapsed={handleToggleCollapsed}
           onMobileClose={() => setMobileMenuOpen(false)}
         />
 
         <section className="min-w-0 flex-1">
+          <NotificationBanner
+            accessToken={accessToken}
+            onNavigateToApprovedLocations={showAdmin ? openApprovedLocationsFromNotification : undefined}
+          />
           {activeSection === "overview" ? (
             <OverviewSection
               accessToken={accessToken}
@@ -138,6 +166,14 @@ export function DashboardShell({
           {activeSection === "metrics" ? <MetricsSection accessToken={accessToken} /> : null}
           {activeSection === "monitoring" ? <MonitoringSection accessToken={accessToken} /> : null}
           {activeSection === "smtp" ? <SmtpSection accessToken={accessToken} /> : null}
+          {activeSection === "admin" && showAdmin ? (
+            <AdminSection
+              accessToken={accessToken}
+              currentUserId={user?.id ?? null}
+              activeTab={adminTab}
+              onTabChange={setAdminTab}
+            />
+          ) : null}
           {activeSection === "settings" ? (
             <SettingsPanel
               accessToken={accessToken}

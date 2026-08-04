@@ -15,21 +15,27 @@ import {
   type SmtpServer,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { SendEmailPanel } from "@/components/dashboard/settings/send-email-panel";
 
-type SmtpSectionProps = {
+type SmtpSettingsTabProps = {
   accessToken: string;
 };
 
-type Tab = "credentials" | "servers" | "logs";
+type SubTab = "connection" | "servers" | "send";
 type PortMode = "submission" | "implicitTls";
 
 function CopyField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-border bg-background p-3">
+    <div className="rounded-md border border-border bg-panel p-3">
       <p className="text-xs font-bold uppercase tracking-normal text-muted-foreground">{label}</p>
       <div className="mt-2 flex items-center justify-between gap-3">
         <code className="truncate font-mono text-sm">{value}</code>
-        <Button type="button" variant="outline" className="h-8 shrink-0" onClick={() => void navigator.clipboard.writeText(value)}>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-8 shrink-0"
+          onClick={() => void navigator.clipboard.writeText(value)}
+        >
           <Copy className="h-3.5 w-3.5" />
           Copy
         </Button>
@@ -38,8 +44,8 @@ function CopyField({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function SmtpSection({ accessToken }: SmtpSectionProps) {
-  const [tab, setTab] = useState<Tab>("credentials");
+export function SmtpSettingsTab({ accessToken }: SmtpSettingsTabProps) {
+  const [subTab, setSubTab] = useState<SubTab>("connection");
   const [config, setConfig] = useState<SmtpConfig | null>(null);
   const [servers, setServers] = useState<SmtpServer[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -58,7 +64,10 @@ export function SmtpSection({ accessToken }: SmtpSectionProps) {
     setLoading(true);
     setError(null);
     try {
-      const [nextConfig, nextServers] = await Promise.all([getSmtpConfig(accessToken), listSmtpServers(accessToken)]);
+      const [nextConfig, nextServers] = await Promise.all([
+        getSmtpConfig(accessToken),
+        listSmtpServers(accessToken),
+      ]);
       setConfig(nextConfig);
       setServers(nextServers);
       setFromEmail(nextConfig.sender.fromEmail);
@@ -165,32 +174,32 @@ export function SmtpSection({ accessToken }: SmtpSectionProps) {
     }
   }
 
-  const emailLogs = [
-    { id: "1", to: "notifications@example.com", status: "delivered", at: "2 min ago" },
-    { id: "2", to: "ops@company.cd", status: "delivered", at: "18 min ago" },
-    { id: "3", to: "bounce@test.io", status: "deferred", at: "1 hr ago" },
-  ];
-
   return (
     <div className="grid gap-5">
       <div>
-        <p className="text-sm font-semibold text-muted-foreground">Email delivery</p>
-        <h1 className="mt-1 text-3xl font-semibold">SMTP relay</h1>
+        <h3 className="font-semibold">Email delivery relay</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Send mail through the Nani SMTP relay ({config.relay.host}) instead of the REST API.
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-border pb-2">
-        {([
-          ["credentials", "Credentials"],
-          ["servers", "SMTP servers"],
-          ["logs", "Delivery logs"],
-        ] as const).map(([id, label]) => (
+        {(
+          [
+            ["connection", "Connection & credentials"],
+            ["servers", "SMTP servers"],
+            ["send", "Send email"],
+          ] as const
+        ).map(([id, label]) => (
           <button
             key={id}
             type="button"
-            onClick={() => setTab(id)}
+            onClick={() => setSubTab(id)}
             className={cn(
               "rounded-md border px-3 py-2 text-sm font-semibold transition",
-              tab === id ? "border-foreground bg-panel text-foreground" : "border-border text-muted-foreground hover:text-foreground",
+              subTab === id
+                ? "border-foreground bg-background text-foreground"
+                : "border-border text-muted-foreground hover:text-foreground",
             )}
           >
             {label}
@@ -198,27 +207,31 @@ export function SmtpSection({ accessToken }: SmtpSectionProps) {
         ))}
       </div>
 
-      {tab === "credentials" ? (
+      {subTab === "connection" ? (
         <>
-          <section className="overflow-hidden rounded-md border border-border bg-panel">
+          <section className="overflow-hidden rounded-md border border-border bg-background">
             <div className="border-b border-border px-5 py-4">
               <div className="flex items-center gap-2">
                 <Mail className="h-5 w-5 text-muted-foreground" />
-                <h2 className="font-semibold">Connection settings</h2>
+                <h4 className="font-semibold">Connection settings</h4>
               </div>
             </div>
             <div className="flex flex-wrap gap-2 border-b border-border px-5 py-3">
-              {([
-                ["submission", "Port 587 · STARTTLS", config.relay.ports.submission.recommended],
-                ["implicitTls", "Port 465 · SSL/TLS", false],
-              ] as const).map(([mode, label, recommended]) => (
+              {(
+                [
+                  ["submission", "Port 587 · STARTTLS", config.relay.ports.submission.recommended],
+                  ["implicitTls", "Port 465 · SSL/TLS", false],
+                ] as const
+              ).map(([mode, label, recommended]) => (
                 <button
                   key={mode}
                   type="button"
                   onClick={() => setPortMode(mode)}
                   className={cn(
                     "rounded-md border px-3 py-2 text-sm font-semibold transition",
-                    portMode === mode ? "border-foreground bg-background text-foreground" : "border-border text-muted-foreground",
+                    portMode === mode
+                      ? "border-foreground bg-panel text-foreground"
+                      : "border-border text-muted-foreground",
                   )}
                 >
                   {label}
@@ -234,21 +247,27 @@ export function SmtpSection({ accessToken }: SmtpSectionProps) {
             </div>
           </section>
 
-          <section className="rounded-md border border-border bg-panel p-5">
+          <section className="rounded-md border border-border bg-background p-5">
             <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
               <div>
                 <div className="flex items-center gap-2">
                   <Lock className="h-4 w-4 text-muted-foreground" />
-                  <h2 className="font-semibold">SMTP password</h2>
+                  <h4 className="font-semibold">SMTP password</h4>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {config.credential.configured ? `Active credential ${config.credential.prefix}…` : "Generate a workspace password."}
+                  {config.credential.configured
+                    ? `Active credential ${config.credential.prefix}…`
+                    : "Generate a workspace password."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" onClick={() => void handleGenerate()} disabled={generating}>
                   <KeyRound className="h-4 w-4" />
-                  {generating ? "Generating..." : config.credential.configured ? "Rotate password" : "Generate password"}
+                  {generating
+                    ? "Generating..."
+                    : config.credential.configured
+                      ? "Rotate password"
+                      : "Generate password"}
                 </Button>
                 {config.credential.configured ? (
                   <Button type="button" variant="outline" onClick={() => void handleRevoke()}>
@@ -259,14 +278,14 @@ export function SmtpSection({ accessToken }: SmtpSectionProps) {
               </div>
             </div>
             {newPassword ? (
-              <div className="mt-4 rounded-md border border-border bg-background p-4">
+              <div className="mt-4 rounded-md border border-border bg-panel p-4">
                 <CopyField label="Password (shown once)" value={newPassword} />
               </div>
             ) : null}
           </section>
 
-          <section className="rounded-md border border-border bg-panel p-5">
-            <h2 className="font-semibold">Default sender identity</h2>
+          <section className="rounded-md border border-border bg-background p-5">
+            <h4 className="font-semibold">Default sender identity</h4>
             <form className="mt-4 grid max-w-2xl gap-4 sm:grid-cols-2" onSubmit={handleSaveSender}>
               <label className="grid gap-2 text-sm font-semibold">
                 From name
@@ -277,51 +296,84 @@ export function SmtpSection({ accessToken }: SmtpSectionProps) {
                 <Input type="email" value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} />
               </label>
               <div className="flex items-center gap-3 sm:col-span-2">
-                <Button type="submit" disabled={savingSender}>{savingSender ? "Saving..." : "Save sender"}</Button>
-                {senderSaved ? <span className="inline-flex items-center gap-1 text-sm"><Check className="h-4 w-4" />Saved</span> : null}
+                <Button type="submit" disabled={savingSender}>
+                  {savingSender ? "Saving..." : "Save sender"}
+                </Button>
+                {senderSaved ? (
+                  <span className="inline-flex items-center gap-1 text-sm">
+                    <Check className="h-4 w-4" />
+                    Saved
+                  </span>
+                ) : null}
               </div>
             </form>
           </section>
         </>
       ) : null}
 
-      {tab === "servers" ? (
+      {subTab === "servers" ? (
         <section className="grid gap-3">
           {servers.map((server) => (
-            <div key={server.id} className="rounded-md border border-border bg-panel p-5">
+            <div key={server.id} className="rounded-md border border-border bg-background p-5">
               {editingId === server.id ? (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="grid gap-2 text-sm font-semibold">
                     Label
-                    <Input value={editDraft.label ?? ""} onChange={(e) => setEditDraft((d) => ({ ...d, label: e.target.value }))} />
+                    <Input
+                      value={editDraft.label ?? ""}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, label: e.target.value }))}
+                    />
                   </label>
                   <label className="grid gap-2 text-sm font-semibold">
                     Host
-                    <Input value={editDraft.host ?? ""} onChange={(e) => setEditDraft((d) => ({ ...d, host: e.target.value }))} />
+                    <Input
+                      value={editDraft.host ?? ""}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, host: e.target.value }))}
+                    />
                   </label>
                   <label className="grid gap-2 text-sm font-semibold">
                     Port
-                    <Input type="number" value={editDraft.port ?? server.port} onChange={(e) => setEditDraft((d) => ({ ...d, port: Number(e.target.value) }))} />
+                    <Input
+                      type="number"
+                      value={editDraft.port ?? server.port}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, port: Number(e.target.value) }))}
+                    />
                   </label>
                   <label className="grid gap-2 text-sm font-semibold">
                     Region
-                    <Input value={editDraft.region ?? ""} onChange={(e) => setEditDraft((d) => ({ ...d, region: e.target.value }))} />
+                    <Input
+                      value={editDraft.region ?? ""}
+                      onChange={(e) => setEditDraft((d) => ({ ...d, region: e.target.value }))}
+                    />
                   </label>
                   <div className="flex gap-2 sm:col-span-2">
-                    <Button type="button" onClick={() => void saveEdit()}><Save className="h-4 w-4" />Save</Button>
-                    <Button type="button" variant="outline" onClick={() => setEditingId(null)}><X className="h-4 w-4" />Cancel</Button>
+                    <Button type="button" onClick={() => void saveEdit()}>
+                      <Save className="h-4 w-4" />
+                      Save
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setEditingId(null)}>
+                      <X className="h-4 w-4" />
+                      Cancel
+                    </Button>
                   </div>
                 </div>
               ) : (
                 <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
                   <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-background">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-panel">
                       <Server className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="font-semibold">{server.label}{server.primary ? " · Primary" : ""}</p>
-                      <p className="text-sm text-muted-foreground">{server.host}:{server.port} · {server.encryption}</p>
-                      <p className="text-xs text-muted-foreground">{server.region} · {server.status}</p>
+                      <p className="font-semibold">
+                        {server.label}
+                        {server.primary ? " · Primary" : ""}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {server.host}:{server.port} · {server.encryption}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {server.region} · {server.status}
+                      </p>
                     </div>
                   </div>
                   {!server.primary ? (
@@ -337,27 +389,12 @@ export function SmtpSection({ accessToken }: SmtpSectionProps) {
         </section>
       ) : null}
 
-      {tab === "logs" ? (
-        <section className="overflow-x-auto rounded-md border border-border bg-panel">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-border text-xs font-bold uppercase tracking-normal text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3">Recipient</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {emailLogs.map((log) => (
-                <tr key={log.id} className="border-b border-border last:border-b-0">
-                  <td className="px-4 py-3">{log.to}</td>
-                  <td className="px-4 py-3 capitalize">{log.status}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{log.at}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+      {subTab === "send" ? (
+        <SendEmailPanel
+          accessToken={accessToken}
+          sender={config.sender}
+          sendingConfigured={Boolean(config.sendingConfigured)}
+        />
       ) : null}
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}

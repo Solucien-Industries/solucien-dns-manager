@@ -11,14 +11,16 @@ import { JwtStrategy } from "./jwt.strategy";
   imports: [
     PassportModule,
     NotificationsModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET ?? "dev-insecure-secret-change-me",
-      // Cast: env vars are plain strings; @nestjs/jwt expects the `ms` template type.
-      signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN ?? "7d") as `${number}d` },
+    // registerAsync so JWT secret is read after ConfigModule loads .env
+    JwtModule.registerAsync({
+      useFactory: () => ({
+        secret: process.env.JWT_SECRET ?? "dev-insecure-secret-change-me",
+        signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN ?? "7d") as `${number}d` },
+      }),
     }),
   ],
   controllers: [AuthController],
   providers: [AuthService, AuthExchangeGuard, JwtStrategy],
   exports: [AuthService],
 })
-export class AuthModule { }
+export class AuthModule {}

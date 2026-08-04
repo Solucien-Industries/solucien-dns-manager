@@ -4,6 +4,7 @@ import {
   CreditCard,
   Database,
   Globe2,
+  Inbox,
   Key,
   Mail,
   Settings,
@@ -19,11 +20,10 @@ export type DashboardSection =
   | "records"
   | "metrics"
   | "monitoring"
-  | "smtp"
   | "admin"
   | "settings";
 
-export type SettingsTab = "api" | "billing" | "users";
+export type SettingsTab = "api" | "billing" | "smtp" | "email" | "users";
 
 export type NavItem = {
   id: DashboardSection;
@@ -44,7 +44,6 @@ export const MAIN_NAV_ITEMS: NavItem[] = [
   { id: "records", label: "DNS Records", icon: Database },
   { id: "metrics", label: "Metrics", icon: BarChart3 },
   { id: "monitoring", label: "Monitoring", icon: ShieldCheck },
-  { id: "smtp", label: "SMTP", icon: Mail },
 ];
 
 /** Platform admin console — only shown to ADMIN/OWNER roles (see isPlatformAdmin). */
@@ -72,6 +71,18 @@ export const SETTINGS_TABS: SettingsNavItem[] = [
     label: "Billing",
     icon: CreditCard,
     description: "Plans, payment methods, and platform credits.",
+  },
+  {
+    id: "smtp",
+    label: "SMTP",
+    icon: Mail,
+    description: "Nani SMTP relay credentials, servers, and sender identity.",
+  },
+  {
+    id: "email",
+    label: "Email",
+    icon: Inbox,
+    description: "Emails sent and received through the SMTP relay.",
   },
   {
     id: "users",

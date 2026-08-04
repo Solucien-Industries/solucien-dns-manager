@@ -7,7 +7,6 @@ import {
   Check,
   Database,
   ExternalLink,
-  Fingerprint,
   Github,
   Globe2,
   KeyRound,
@@ -20,15 +19,18 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/components/auth-provider";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { SiteFooter } from "@/components/site-footer";
 import { DOCS_URL } from "@/lib/api";
+import { isPlatformAdmin } from "@/lib/workspace-users";
 import { workflow } from "@/lib/mock-dns";
 import { cn } from "@/lib/utils";
 import { signIn } from "next-auth/react";
 
 type StatItem = [label: string, value: string | number, icon: LucideIcon];
+type ConsoleMode = "admin" | "tenant";
 
 const capabilities = [
   "African ccTLD support without registrar lock-in",
@@ -40,26 +42,39 @@ const capabilities = [
 export default function Home() {
   const [dark, setDark] = useState(false);
   const [view, setView] = useState<"console" | "home">("console");
-  const { status, accessToken, user, signOut, enterPreview, error } = useAuth();
+  const [consoleMode, setConsoleMode] = useState<ConsoleMode | null>(null);
+  const { status, accessToken, user, signOut, error } = useAuth();
+
+  const isAdmin = isPlatformAdmin(user?.role);
+
+  async function handleSignOut() {
+    setConsoleMode(null);
+    await signOut();
+  }
+
+  if (status === "authenticated" && accessToken && isAdmin && consoleMode === null) {
+    return (
+      <main className={cn(dark && "dark")}>
+        <div className="min-h-screen bg-background text-foreground transition-colors">
+          <AdminModeChooser userLabel={user?.name ?? user?.email ?? "Admin"} onChoose={setConsoleMode} />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className={cn(dark && "dark")}>
       <div className="min-h-screen bg-background text-foreground transition-colors">
-        {status === "loading" ? (
-          <div className="grid min-h-screen place-items-center bg-background">
-            <div className="rounded-md border border-border bg-panel p-6 text-sm font-semibold animate-pulse text-muted-foreground">
-              Verifying security tokens...
-            </div>
-          </div>
-        ) : status === "authenticated" && accessToken ? (
+        {status === "authenticated" && accessToken ? (
           view === "console" ? (
             <DashboardShell
               accessToken={accessToken}
               user={user}
-              onSignOut={signOut}
+              onSignOut={handleSignOut}
               dark={dark}
               onThemeChange={() => setDark((value) => !value)}
               onGoHome={() => setView("home")}
+              showAdminNav={isAdmin && consoleMode !== "tenant"}
             />
           ) : (
             <Landing
@@ -69,13 +84,13 @@ export default function Home() {
               onEnter={async () => setView("console")}
               authError={error}
               onThemeChange={() => setDark((value) => !value)}
-              onSignOut={signOut}
+              onSignOut={handleSignOut}
             />
           )
         ) : (
           <Landing
             dark={dark}
-            onEnter={enterPreview}
+            isAuthLoading={status === "loading"}
             authError={error}
             onThemeChange={() => setDark((value) => !value)}
           />
@@ -85,9 +100,42 @@ export default function Home() {
   );
 }
 
+function AdminModeChooser({
+  userLabel,
+  onChoose,
+}: {
+  userLabel: string;
+  onChoose: (mode: ConsoleMode) => void;
+}) {
+  return (
+    <div className="grid min-h-screen place-items-center p-4">
+      <div className="w-full max-w-md rounded-md border border-border bg-panel p-6 text-center shadow-lg">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-md border border-border bg-background">
+          <ShieldCheck className="h-6 w-6" />
+        </div>
+        <h1 className="mt-4 text-xl font-semibold">Welcome back, {userLabel}</h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          Your account has platform administrator access. How would you like to continue?
+        </p>
+        <div className="mt-6 grid gap-2">
+          <Button onClick={() => onChoose("admin")}>
+            <ShieldCheck className="h-4 w-4" />
+            Continue as Admin
+          </Button>
+          <Button variant="outline" onClick={() => onChoose("tenant")}>
+            <KeyRound className="h-4 w-4" />
+            Continue as Tenant
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Landing({
   dark,
   authenticated = false,
+  isAuthLoading = false,
   userLabel,
   onEnter,
   authError,
@@ -96,12 +144,15 @@ function Landing({
 }: {
   dark: boolean;
   authenticated?: boolean;
+  isAuthLoading?: boolean;
   userLabel?: string;
-  onEnter: () => void | Promise<void>;
+  onEnter?: () => void | Promise<void>;
   authError: string | null;
   onThemeChange: () => void;
   onSignOut?: () => Promise<void>;
 }) {
+  const [loginMenuOpen, setLoginMenuOpen] = useState(false);
+
   return (
     <div>
       <Header
@@ -110,6 +161,9 @@ function Landing({
         onThemeChange={onThemeChange}
         onEnter={onEnter}
         onSignOut={onSignOut}
+        loginMenuOpen={loginMenuOpen}
+        onLoginMenuOpenChange={setLoginMenuOpen}
+        authError={authError}
       />
       {authenticated ? (
         <div className="border-b border-border bg-panel">
@@ -117,10 +171,16 @@ function Landing({
             <p className="text-sm text-muted-foreground">
               Signed in as <span className="font-semibold text-foreground">{userLabel}</span>. Your session stays active on the home page.
             </p>
-            <Button onClick={() => void onEnter()}>
+            <Button onClick={() => void onEnter?.()}>
               Open console
               <ArrowRight className="h-4 w-4" />
             </Button>
+          </div>
+        </div>
+      ) : isAuthLoading ? (
+        <div className="border-b border-border bg-panel">
+          <div className="mx-auto flex max-w-7xl items-center px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:px-6 lg:px-8">
+            Verifying security session...
           </div>
         </div>
       ) : null}
@@ -138,8 +198,8 @@ function Landing({
               A professional DNS operations console for African domains and global TLDs, built around Nani nameservers, PowerDNS zones, and trusted OAuth identity.
             </p>
             <div className="mt-8 grid max-w-lg gap-3 sm:grid-cols-2">
-              <Button onClick={() => void onEnter()}>
-                {authenticated ? "Open console" : "Preview dashboard"}
+              <Button onClick={() => (authenticated ? void onEnter?.() : setLoginMenuOpen(true))}>
+                {authenticated ? "Open console" : "Log in"}
                 <ArrowRight className="h-4 w-4" />
               </Button>
               <a
@@ -185,38 +245,6 @@ function Landing({
           ))}
         </div>
       </section>
-
-      <section id="access" className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_420px] lg:px-8">
-        <div className="max-w-2xl">
-          <p className="text-sm font-bold uppercase tracking-normal text-muted-foreground">Secure workspace access</p>
-          <h2 className="mt-2 text-3xl font-semibold">Sign in with a trusted identity provider.</h2>
-          <p className="mt-4 text-sm leading-6 text-muted-foreground">
-            Nani DNS treats users as externally verified identities. Google and GitHub handle credential verification; the app receives an authenticated user profile for tenant access.
-          </p>
-          <a
-            href={DOCS_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-foreground underline-offset-4 hover:underline"
-          >
-            Read the Nani API documentation
-            <ExternalLink className="h-4 w-4" />
-          </a>
-        </div>
-        {authenticated ? (
-          <div className="rounded-md border border-border bg-background p-5">
-            <p className="font-semibold">You are already signed in</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Return to the console to manage domains, DNS records, SMTP, and billing.
-            </p>
-            <Button className="mt-5" onClick={() => void onEnter()}>
-              Open console
-            </Button>
-          </div>
-        ) : (
-          <AuthPanel onEnter={onEnter} authError={authError} />
-        )}
-      </section>
       <SiteFooter />
     </div>
   );
@@ -228,12 +256,18 @@ function Header({
   onThemeChange,
   onEnter,
   onSignOut,
+  loginMenuOpen,
+  onLoginMenuOpenChange,
+  authError,
 }: {
   dark: boolean;
   authenticated?: boolean;
   onThemeChange: () => void;
-  onEnter: () => void | Promise<void>;
+  onEnter?: () => void | Promise<void>;
   onSignOut?: () => Promise<void>;
+  loginMenuOpen: boolean;
+  onLoginMenuOpenChange: (open: boolean) => void;
+  authError: string | null;
 }) {
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background/90 backdrop-blur">
@@ -257,90 +291,177 @@ function Header({
             <BookOpen className="h-4 w-4" />
             API docs
           </a>
+          {authenticated ? (
+            <>
+              <Button variant="outline" className="hidden sm:inline-flex" onClick={() => void onEnter?.()}>
+                <LockKeyhole className="h-4 w-4" />
+                Console
+              </Button>
+              {onSignOut ? (
+                <Button variant="outline" onClick={() => void onSignOut()}>
+                  Sign out
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <div className="relative">
+              <Button variant="outline" onClick={() => onLoginMenuOpenChange(!loginMenuOpen)}>
+                <LockKeyhole className="h-4 w-4" />
+                Login/Register
+              </Button>
+              <LoginMenu open={loginMenuOpen} onClose={() => onLoginMenuOpenChange(false)} authError={authError} />
+            </div>
+          )}
           <Button variant="ghost" className="h-10 w-10 px-0" onClick={onThemeChange} aria-label="Toggle theme">
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
-          <Button variant="outline" className="hidden sm:inline-flex" onClick={() => void onEnter()}>
-            <LockKeyhole className="h-4 w-4" />
-            {authenticated ? "Console" : "Console"}
-          </Button>
-          {authenticated && onSignOut ? (
-            <Button variant="outline" onClick={() => void onSignOut()}>
-              Sign out
-            </Button>
-          ) : null}
         </div>
       </div>
     </header>
   );
 }
 
-function AuthPanel({
-  onEnter,
+function LoginMenu({
+  open,
+  onClose,
   authError,
 }: {
-  onEnter: () => void | Promise<void>;
+  open: boolean;
+  onClose: () => void;
   authError: string | null;
 }) {
-  const { config } = useAuth();
+  const { config, enterPreview, enterWithPassword } = useAuth();
   const [entering, setEntering] = useState(false);
+  const [credMode, setCredMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [credError, setCredError] = useState<string | null>(null);
 
-  async function handlePreview() {
+  async function handlePreviewUser() {
     setEntering(true);
     try {
-      await onEnter();
+      await enterPreview("user");
+      onClose();
+    } catch {
+      // Error surfaced via authError below; menu stays open so it's visible.
     } finally {
       setEntering(false);
     }
   }
 
+  async function handleCredentialSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setCredError(null);
+    setEntering(true);
+    try {
+      await enterWithPassword({
+        mode: credMode,
+        email,
+        password,
+        name: credMode === "register" ? name : undefined,
+      });
+      onClose();
+    } catch (err) {
+      setCredError(err instanceof Error ? err.message : "Could not sign in.");
+    } finally {
+      setEntering(false);
+    }
+  }
+
+  if (!open) return null;
+
   return (
-    <div className="rounded-md border border-border bg-background p-5">
-      <div className="mb-5 flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-panel">
-          <Fingerprint className="h-5 w-5" />
-        </div>
-        <div>
-          <h3 className="font-semibold">Identity verification</h3>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">Choose a third-party provider. Solucien does not ask for or store your password.</p>
-        </div>
-      </div>
-      <div className="grid gap-3">
-        {config?.google ? (
-          <button
-            onClick={() => signIn("google")}
-            className="inline-flex h-11 items-center justify-center gap-3 rounded-md border border-border bg-background px-4 text-sm font-semibold transition hover:bg-muted cursor-pointer"
-          >
-            <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border text-xs font-bold">G</span>
-            Continue with Google
-          </button>
-        ) : null}
+    <>
+      <div className="fixed inset-0 z-30" onClick={onClose} />
+      <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-80 rounded-md border border-border bg-background p-4 shadow-xl">
+        <div className="grid gap-3">
+          {config?.google ? (
+            <button
+              onClick={() => signIn("google")}
+              className="inline-flex h-11 items-center justify-center gap-3 rounded-md border border-border bg-background px-4 text-sm font-semibold transition hover:bg-muted cursor-pointer"
+            >
+              <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border text-xs font-bold">G</span>
+              Continue with Google
+            </button>
+          ) : null}
 
-        {config?.github ? (
-          <button
-            onClick={() => signIn("github")}
-            className="inline-flex h-11 items-center justify-center gap-3 rounded-md border border-border bg-background px-4 text-sm font-semibold transition hover:bg-muted cursor-pointer"
-          >
-            <Github className="h-5 w-5" />
-            Continue with GitHub
-          </button>
-        ) : null}
+          {config?.github ? (
+            <button
+              onClick={() => signIn("github")}
+              className="inline-flex h-11 items-center justify-center gap-3 rounded-md border border-border bg-background px-4 text-sm font-semibold transition hover:bg-muted cursor-pointer"
+            >
+              <Github className="h-5 w-5" />
+              Continue with GitHub
+            </button>
+          ) : null}
 
-        {config?.previewAvailable ? (
-          <Button variant="primary" onClick={handlePreview} disabled={entering}>
-            <KeyRound className="h-4 w-4" />
-            {entering ? "Starting preview..." : "Preview authenticated dashboard"}
-          </Button>
-        ) : null}
+          <form onSubmit={(event) => void handleCredentialSubmit(event)} className="grid gap-2 border-t border-border pt-3">
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setCredMode("login")}
+                className={cn(
+                  "flex-1 rounded px-2 py-1 text-xs font-bold uppercase tracking-normal transition",
+                  credMode === "login" ? "bg-panel text-foreground" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Log in
+              </button>
+              <button
+                type="button"
+                onClick={() => setCredMode("register")}
+                className={cn(
+                  "flex-1 rounded px-2 py-1 text-xs font-bold uppercase tracking-normal transition",
+                  credMode === "register" ? "bg-panel text-foreground" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Register
+              </button>
+            </div>
+            {credMode === "register" ? (
+              <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Name (optional)" />
+            ) : null}
+            <Input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Email"
+              required
+            />
+            <Input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Password"
+              minLength={8}
+              required
+            />
+            <Button type="submit" variant="outline" disabled={entering}>
+              {entering ? "Working..." : credMode === "register" ? "Create account" : "Log in with password"}
+            </Button>
+            {credError ? <p className="text-xs text-red-600">{credError}</p> : null}
+          </form>
+
+          {config?.previewAvailable ? (
+            <div className="grid gap-2 border-t border-border pt-3">
+              <p className="text-xs font-bold uppercase tracking-normal text-muted-foreground">Dev preview</p>
+              <Button variant="outline" onClick={() => void handlePreviewUser()} disabled={entering}>
+                <KeyRound className="h-4 w-4" />
+                {entering ? "Starting..." : "Preview as User"}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+        {authError ? (
+          <p className="mt-3 text-xs leading-5 text-red-600">{authError}</p>
+        ) : (
+          <p className="mt-3 text-xs leading-5 text-muted-foreground">
+            Google and GitHub handle credential verification for you, or use an email and password.
+          </p>
+        )}
       </div>
-      {authError ? (
-        <p className="mt-4 text-xs leading-5 text-red-600">{authError}</p>
-      ) : (
-        <p className="mt-4 text-xs leading-5 text-muted-foreground">
-          OAuth redirects require provider credentials in apps/web/.env.local. Preview mode exchanges a dev-only API token so the dashboard stays testable without OAuth.
-        </p>
-      )}
-    </div>
+    </>
   );
 }
 

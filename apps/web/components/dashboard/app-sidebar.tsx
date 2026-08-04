@@ -2,6 +2,7 @@
 
 import { PanelLeftClose, PanelLeftOpen, type LucideIcon } from "lucide-react";
 import {
+  ADMIN_NAV_ITEM,
   MAIN_NAV_ITEMS,
   SETTINGS_NAV_ITEM,
   type DashboardSection,
@@ -13,6 +14,7 @@ type AppSidebarProps = {
   activeSection: DashboardSection;
   collapsed: boolean;
   mobileOpen: boolean;
+  showAdmin: boolean;
   onSectionChange: (section: DashboardSection) => void;
   onToggleCollapsed: () => void;
   onMobileClose: () => void;
@@ -53,12 +55,14 @@ function NavButton({
 function SidebarContent({
   activeSection,
   collapsed,
+  showAdmin,
   onSectionChange,
   onToggleCollapsed,
   showCollapseToggle,
 }: {
   activeSection: DashboardSection;
   collapsed: boolean;
+  showAdmin: boolean;
   onSectionChange: (section: DashboardSection) => void;
   onToggleCollapsed: () => void;
   showCollapseToggle: boolean;
@@ -91,6 +95,15 @@ function SidebarContent({
             onClick={() => onSectionChange(item.id)}
           />
         ))}
+        {showAdmin ? (
+          <NavButton
+            label={ADMIN_NAV_ITEM.label}
+            icon={ADMIN_NAV_ITEM.icon}
+            active={activeSection === ADMIN_NAV_ITEM.id}
+            collapsed={collapsed}
+            onClick={() => onSectionChange(ADMIN_NAV_ITEM.id)}
+          />
+        ) : null}
       </nav>
 
       <div className="mt-auto border-t border-border pt-2">
@@ -110,6 +123,7 @@ export function AppSidebar({
   activeSection,
   collapsed,
   mobileOpen,
+  showAdmin,
   onSectionChange,
   onToggleCollapsed,
   onMobileClose,
@@ -143,6 +157,7 @@ export function AppSidebar({
         <SidebarContent
           activeSection={activeSection}
           collapsed={false}
+          showAdmin={showAdmin}
           onSectionChange={handleSectionChange}
           onToggleCollapsed={onToggleCollapsed}
           showCollapseToggle={false}
@@ -159,6 +174,7 @@ export function AppSidebar({
         <SidebarContent
           activeSection={activeSection}
           collapsed={collapsed}
+          showAdmin={showAdmin}
           onSectionChange={onSectionChange}
           onToggleCollapsed={onToggleCollapsed}
           showCollapseToggle

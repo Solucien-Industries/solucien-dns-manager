@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Check, Copy, KeyRound, Lock, Mail, Pencil, Save, Server, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,7 +54,7 @@ export function SmtpSection({ accessToken }: SmtpSectionProps) {
   const [savingSender, setSavingSender] = useState(false);
   const [senderSaved, setSenderSaved] = useState(false);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -68,10 +68,31 @@ export function SmtpSection({ accessToken }: SmtpSectionProps) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [accessToken]);
 
   useEffect(() => {
-    void refresh();
+    let cancelled = false;
+
+    Promise.all([getSmtpConfig(accessToken), listSmtpServers(accessToken)])
+      .then(([nextConfig, nextServers]) => {
+        if (cancelled) return;
+        setConfig(nextConfig);
+        setServers(nextServers);
+        setFromEmail(nextConfig.sender.fromEmail);
+        setFromName(nextConfig.sender.fromName);
+        setError(null);
+      })
+      .catch((refreshError) => {
+        if (cancelled) return;
+        setError(refreshError instanceof Error ? refreshError.message : "Failed to load SMTP settings.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [accessToken]);
 
   if (loading && !config) {

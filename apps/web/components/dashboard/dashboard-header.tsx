@@ -48,11 +48,11 @@ export function DashboardHeader({
             <Home className="h-4 w-4" />
             <span className="hidden sm:inline">Home</span>
           </Button>
-          <Button variant="ghost" className="h-10 w-10 px-0" onClick={onThemeChange} aria-label="Toggle theme">
-            {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </Button>
           <Button variant="outline" onClick={() => void onSignOut()}>
             Sign out
+          </Button>
+          <Button variant="ghost" className="h-10 w-10 px-0" onClick={onThemeChange} aria-label="Toggle theme">
+            {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
         </div>
       </div>

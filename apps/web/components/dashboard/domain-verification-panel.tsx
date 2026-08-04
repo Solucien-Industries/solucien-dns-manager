@@ -23,7 +23,7 @@ export function DomainVerificationPanel({
   onVerified,
 }: DomainVerificationPanelProps) {
   const [verification, setVerification] = useState<DomainVerification | null>(null);
-  const [checking, setChecking] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const runCheck = useCallback(async () => {
@@ -41,8 +41,27 @@ export function DomainVerificationPanel({
   }, [accessToken, domain, onVerified]);
 
   useEffect(() => {
-    void runCheck();
-  }, [runCheck]);
+    let cancelled = false;
+
+    verifyDomainDelegation(accessToken, domain)
+      .then((result) => {
+        if (cancelled) return;
+        setVerification(result);
+        setError(null);
+        if (result.verified) onVerified?.();
+      })
+      .catch((checkError) => {
+        if (cancelled) return;
+        setError(checkError instanceof Error ? checkError.message : "Verification check failed.");
+      })
+      .finally(() => {
+        if (!cancelled) setChecking(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, domain, onVerified]);
 
   useEffect(() => {
     if (!autoPoll || verification?.verified) return;

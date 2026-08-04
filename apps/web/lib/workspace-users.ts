@@ -19,6 +19,11 @@ export function canManageMembers(role: string | undefined): boolean {
   return role === "OWNER" || role === "ADMIN";
 }
 
+/** Only platform administrators can reach the system-wide, cross-tenant admin console. */
+export function isPlatformAdmin(role: string | undefined): boolean {
+  return role === "ADMIN";
+}
+
 export function createInvitedMember(input: { name: string; email: string; role: WorkspaceRole }): WorkspaceMember {
   return {
     id: `usr_${Math.random().toString(36).slice(2, 10)}`,

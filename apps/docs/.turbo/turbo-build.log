@@ -1,0 +1,54 @@
+
+> @solucien/docs@0.1.0 build
+> next build --webpack
+
+[1m[38;2;173;127;168m▲ Next.js 16.1.6[39m[22m (webpack)
+
+[37m[1m [22m[39m Creating an optimized production build ...
+(node:28653) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/becky/Desktop/SDMS/solucien-dns-manager/apps/docs/typography.js?id=1784640257789 is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/becky/Desktop/SDMS/solucien-dns-manager/apps/docs/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Found 2 warnings while optimizing generated CSS:
+
+Issue #1:
+[2m│       margin-left: calc(-1 * 1rem);[22m
+[2m│       margin-right: calc(-1 * 1rem);[22m
+[2m│[22m       @screen sm {
+[2m┆[22m              [33m[2m^--[22m Unknown at rule: @screen[39m
+[2m┆[22m
+[2m│         margin-left: calc(-1 * 1.5rem);[22m
+[2m│         margin-right: calc(-1 * 1.5rem);[22m
+
+Issue #2:
+[2m│         margin-right: calc(-1 * 1.5rem);[22m
+[2m│       }[22m
+[2m│[22m       @screen lg {
+[2m┆[22m              [33m[2m^--[22m Unknown at rule: @screen[39m
+[2m┆[22m
+[2m│         margin-left: calc(-1 * 2rem);[22m
+[2m│         margin-right: calc(-1 * 2rem);[22m
+
+[32m[1m✓[22m[39m Compiled successfully in 24.3s
+[?25l[37m[1m [22m[39m Running TypeScript  [36m.[39m[2K[1G[37m[1m [22m[39m Running TypeScript  [36m..[39m[2K[1G[?25h[?25l[37m[1m [22m[39m Finished TypeScript in 231.6ms  [36m.[39m[2K[1G[?25h[37m[1m [22m[39m Finished TypeScript in 231.6ms    [32m[1m✓[22m[39m Finished TypeScript in 231.6ms 
+[?25l[37m[1m [22m[39m Collecting page data using 7 workers  [36m.[39m[2K[1G[37m[1m [22m[39m Collecting page data using 7 workers  [36m..[39m[2K[1G[37m[1m [22m[39m Collecting page data using 7 workers  [36m...[39m[2K[1G[37m[1m [22m[39m Collecting page data using 7 workers  [36m.[39m[2K[1G[37m[1m [22m[39m Collecting page data using 7 workers  [36m..[39m[2K[1G[?25h[37m[1m [22m[39m Collecting page data using 7 workers in 967.6ms    [32m[1m✓[22m[39m Collecting page data using 7 workers in 967.6ms 
+[?25l[37m[1m [22m[39m Generating static pages using 7 workers (0/12)  [36m[    ][39m[2K[1G[37m[1m [22m[39m Generating static pages using 7 workers (1/12)  [36m[=   ][39m[2K[1G[37m[1m [22m[39m Generating static pages using 7 workers (8/12)  [36m[==  ][39m[2K[1G[?25h[32m[1m✓[22m[39m Generating static pages using 7 workers (12/12) in 661.5ms
+[?25l[37m[1m [22m[39m Finalizing page optimization  [36m.[39m[?25l[37m[1m [22m[39m Collecting build traces  [36m.[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m..[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m..[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m...[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m...[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m.[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m.[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m..[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m..[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m...[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m...[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m.[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m.[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m..[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m..[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m...[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m...[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m.[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m.[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m..[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m..[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m...[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m...[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m.[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m.[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m..[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m..[39m[2K[1G[37m[1m [22m[39m Finalizing page optimization  [36m...[39m[2K[1G[37m[1m [22m[39m Collecting build traces  [36m...[39m[2K[1G[?25h[37m[1m [22m[39m Collecting build traces in 4.7s    [32m[1m✓[22m[39m Collecting build traces in 4.7s 
+[2K[1G[?25h[37m[1m [22m[39m Finalizing page optimization in 4.7s    [32m[1m✓[22m[39m Finalizing page optimization in 4.7s 
+
+[4mRoute (app)[24m
+┌ ○ /
+├ ○ /_not-found
+├ ○ /api-keys
+├ ○ /authentication
+├ ○ /dashboard
+├ ○ /domains
+├ ○ /errors
+├ ○ /quickstart
+├ ○ /records
+└ ○ /smtp
+
+
+○  (Static)  prerendered as static content
+
+[?25h⠙[1G[0K

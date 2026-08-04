@@ -26,13 +26,23 @@ type AuthConfig = {
   previewAvailable: boolean;
 };
 
+export type PreviewRole = "admin" | "user";
+
+export type PasswordCredentials = {
+  mode: "login" | "register";
+  email: string;
+  password: string;
+  name?: string;
+};
+
 type AuthContextValue = {
   status: "loading" | "authenticated" | "unauthenticated";
   accessToken: string | null;
   user: AuthUser | null;
   config: AuthConfig | null;
   error: string | null;
-  enterPreview: () => Promise<void>;
+  enterPreview: (role?: PreviewRole) => Promise<void>;
+  enterWithPassword: (credentials: PasswordCredentials) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -73,6 +83,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (previewMode) return;
 
     if (sessionStatus !== "authenticated" || !session?.user?.email) {
+      // Synchronously clearing local auth state when the external NextAuth
+      // session drops is intentional here, not an accidental render loop.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAccessToken(null);
       setUser(null);
       setExchangeStatus("idle");
@@ -104,13 +117,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [previewMode, session?.user?.email, sessionStatus]);
 
-  const enterPreview = useCallback(async () => {
+  const enterPreview = useCallback(async (role: PreviewRole = "user") => {
     setError(null);
     setPreviewMode(true);
+    setExchangeStatus("loading");
 
     try {
       const payload = await readJson<{ accessToken: string; user: AuthUser }>(
-        await fetch("/api/auth/preview", { method: "POST" }),
+        await fetch(`/api/auth/preview?role=${role}`, { method: "POST" }),
       );
 
       setAccessToken(payload.accessToken);
@@ -124,6 +138,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const message = previewError instanceof Error ? previewError.message : "Preview token exchange failed.";
       setError(message);
       throw previewError;
+    }
+  }, []);
+
+  const enterWithPassword = useCallback(async (credentials: PasswordCredentials) => {
+    setError(null);
+    setPreviewMode(true);
+    setExchangeStatus("loading");
+
+    try {
+      const payload = await readJson<{ accessToken: string; user: AuthUser }>(
+        await fetch("/api/auth/password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(credentials),
+        }),
+      );
+
+      setAccessToken(payload.accessToken);
+      setUser(payload.user);
+      setExchangeStatus("done");
+    } catch (passwordError) {
+      setPreviewMode(false);
+      setAccessToken(null);
+      setUser(null);
+      setExchangeStatus("idle");
+      const message = passwordError instanceof Error ? passwordError.message : "Could not sign in.";
+      setError(message);
+      throw passwordError;
     }
   }, []);
 
@@ -153,9 +195,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       config,
       error,
       enterPreview,
+      enterWithPassword,
       signOut,
     }),
-    [accessToken, config, enterPreview, error, signOut, status, user],
+    [accessToken, config, enterPreview, enterWithPassword, error, signOut, status, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Globe2, Plus, Search, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,17 +32,23 @@ export function RecordsSection({ data, onAddDomain }: RecordsSectionProps) {
   const [localRecords, setLocalRecords] = useState(data.records);
   const [notice, setNotice] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Adjust local state during render when the incoming props change, instead
+  // of syncing via an Effect (see https://react.dev/learn/you-might-not-need-an-effect).
+  const [prevRecords, setPrevRecords] = useState(data.records);
+  if (data.records !== prevRecords) {
+    setPrevRecords(data.records);
     setLocalRecords(data.records);
-  }, [data.records]);
+  }
 
-  useEffect(() => {
+  const [prevDomains, setPrevDomains] = useState(data.domains);
+  if (data.domains !== prevDomains) {
+    setPrevDomains(data.domains);
     setSelectedDomain((current) => {
       if (data.domains.length === 0) return "";
       if (current && data.domains.some((domain) => domain.name === current)) return current;
       return data.domains[0].name;
     });
-  }, [data.domains]);
+  }
 
   const selectedZone = data.domains.find((domain) => domain.name === selectedDomain);
 

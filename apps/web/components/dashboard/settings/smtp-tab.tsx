@@ -15,12 +15,13 @@ import {
   type SmtpServer,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { SendEmailPanel } from "@/components/dashboard/settings/send-email-panel";
 
 type SmtpSettingsTabProps = {
   accessToken: string;
 };
 
-type SubTab = "connection" | "servers";
+type SubTab = "connection" | "servers" | "send";
 type PortMode = "submission" | "implicitTls";
 
 function CopyField({ label, value }: { label: string; value: string }) {
@@ -166,6 +167,7 @@ export function SmtpSettingsTab({ accessToken }: SmtpSettingsTabProps) {
           [
             ["connection", "Connection & credentials"],
             ["servers", "SMTP servers"],
+            ["send", "Send email"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -364,6 +366,14 @@ export function SmtpSettingsTab({ accessToken }: SmtpSettingsTabProps) {
             </div>
           ))}
         </section>
+      ) : null}
+
+      {subTab === "send" ? (
+        <SendEmailPanel
+          accessToken={accessToken}
+          sender={config.sender}
+          sendingConfigured={Boolean(config.sendingConfigured)}
+        />
       ) : null}
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}

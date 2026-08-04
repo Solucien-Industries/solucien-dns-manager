@@ -146,6 +146,8 @@ export type SmtpConfig = {
     fromEmail: string;
     fromName: string;
   };
+  sendingConfigured?: boolean;
+  onboardingConfigured?: boolean;
   description: string;
 };
 
@@ -335,4 +337,37 @@ export async function exportDomainZone(
   });
   if (!res.ok) throw new Error(await readApiError(res));
   return (await res.json()) as { domain: string; format: string; content: string };
+}
+
+export type SendEmailInput = {
+  to: string;
+  subject: string;
+  text?: string;
+  html?: string;
+  fromEmail?: string;
+  replyTo?: string;
+};
+
+export type SendEmailResult = {
+  messageId: string;
+  accepted: string[];
+  rejected: string[];
+};
+
+/** Send an email through the platform SES relay (POST /api/smtp/send). */
+export async function sendEmail(
+  accessToken: string,
+  input: SendEmailInput,
+): Promise<SendEmailResult> {
+  const res = await fetch(`${API_URL}/api/smtp/send`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify(input),
+  });
+
+  if (!res.ok) {
+    throw new Error(await readApiError(res));
+  }
+
+  return (await res.json()) as SendEmailResult;
 }

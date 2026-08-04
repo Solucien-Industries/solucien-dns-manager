@@ -56,9 +56,11 @@ export class MailService {
     this.transporter = createTransport({
       host,
       port,
-      // Port 465 is implicit TLS; 587/others use STARTTLS.
       secure: port === 465,
       auth: { user: username, pass: password },
+      tls: {
+        rejectUnauthorized: false,   // dev-only: tolerate local TLS interception
+      },
     });
 
     this.logger.log(`SES SMTP transport ready (${host}:${port})`);

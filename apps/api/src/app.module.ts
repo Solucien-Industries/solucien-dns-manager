@@ -20,6 +20,7 @@ import { AdminModule } from "./admin/admin.module";
 import { AuditModule } from "./audit/audit.module";
 import { AuditInterceptor } from "./audit/audit.interceptor";
 import { HealthController } from "./health/health.controller";
+import { SmsModule } from "./sms/sms";
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { HealthController } from "./health/health.controller";
     NotificationsModule,
     AdminModule,
     AuditModule,
+    SmsModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_INTERCEPTOR, useClass: AuditInterceptor }],

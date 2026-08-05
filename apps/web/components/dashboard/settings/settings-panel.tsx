@@ -14,6 +14,7 @@ import {
 import { SETTINGS_TABS, type SettingsTab } from "@/lib/dashboard-nav";
 import { BillingSettingsTab } from "@/components/dashboard/settings/billing-tab";
 import { EmailActivityTab } from "@/components/dashboard/settings/email-activity-tab";
+import { SendSmsPanel } from "@/components/dashboard/settings/send-sms-panel";
 import { SmtpSettingsTab } from "@/components/dashboard/settings/smtp-tab";
 import { UsersSettingsTab } from "@/components/dashboard/settings/users-tab";
 import { cn } from "@/lib/utils";
@@ -270,6 +271,7 @@ export function SettingsPanel({ accessToken, activeTab, onTabChange, user }: Set
           {activeTab === "billing" ? <BillingSettingsTab /> : null}
           {activeTab === "smtp" ? <SmtpSettingsTab accessToken={accessToken} /> : null}
           {activeTab === "email" ? <EmailActivityTab /> : null}
+          {activeTab === "sms" ? <SendSmsPanel accessToken={accessToken} /> : null}
           {activeTab === "users" ? <UsersSettingsTab user={user} /> : null}
         </div>
       </div>

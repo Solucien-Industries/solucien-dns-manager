@@ -1,0 +1,90 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.workflow = exports.seedRecords = exports.seedDomains = exports.SOLUCIEN_NAMESERVERS = exports.NANI_NAMESERVERS = exports.RECORD_TYPES = void 0;
+exports.computeStats = computeStats;
+exports.seedDashboard = seedDashboard;
+exports.RECORD_TYPES = ["A", "AAAA", "CNAME", "MX", "TXT", "NS"];
+exports.NANI_NAMESERVERS = [
+    "ns1.nani.dns",
+    "ns2.nani.dns",
+];
+exports.SOLUCIEN_NAMESERVERS = exports.NANI_NAMESERVERS;
+exports.seedDomains = [
+    {
+        id: "dom_001",
+        name: "solucien.cd",
+        tld: ".cd",
+        status: "Active",
+        zone: "solucien.cd.",
+        owner: "Solucien Industries",
+        nameservers: exports.NANI_NAMESERVERS,
+        records: 18,
+        uptime: "99.99%",
+        lastSync: "2 min ago",
+    },
+    {
+        id: "dom_002",
+        name: "kinshasa.africa",
+        tld: ".africa",
+        status: "Active",
+        zone: "kinshasa.africa.",
+        owner: "Regional Growth Team",
+        nameservers: exports.NANI_NAMESERVERS,
+        records: 12,
+        uptime: "99.96%",
+        lastSync: "9 min ago",
+    },
+    {
+        id: "dom_003",
+        name: "lakehub.ke",
+        tld: ".ke",
+        status: "Pending",
+        zone: "lakehub.ke.",
+        owner: "LakeHub Labs",
+        nameservers: exports.NANI_NAMESERVERS,
+        records: 7,
+        uptime: "Pending",
+        lastSync: "Queued",
+    },
+    {
+        id: "dom_004",
+        name: "commerce.co.za",
+        tld: ".co.za",
+        status: "Attention",
+        zone: "commerce.co.za.",
+        owner: "Commerce Desk",
+        nameservers: exports.NANI_NAMESERVERS,
+        records: 21,
+        uptime: "98.72%",
+        lastSync: "38 min ago",
+    },
+];
+exports.seedRecords = [
+    { id: "rec_001", domain: "solucien.cd", type: "A", name: "@", value: "196.29.43.18", ttl: 300, updatedAt: "2 min ago" },
+    { id: "rec_002", domain: "solucien.cd", type: "MX", name: "@", value: "mail.solucien.cd", ttl: 3600, priority: 10, updatedAt: "14 min ago" },
+    { id: "rec_003", domain: "kinshasa.africa", type: "TXT", name: "_spf", value: "v=spf1 include:nani.dns -all", ttl: 1800, updatedAt: "24 min ago" },
+    { id: "rec_004", domain: "lakehub.ke", type: "CNAME", name: "www", value: "lakehub.ke", ttl: 600, updatedAt: "Queued" },
+    { id: "rec_005", domain: "commerce.co.za", type: "A", name: "api", value: "102.214.71.10", ttl: 300, updatedAt: "38 min ago" },
+];
+function computeStats(domains) {
+    return {
+        activeDomains: domains.filter((d) => d.status === "Active").length,
+        managedRecords: domains.reduce((total, d) => total + d.records, 0),
+        nameservers: exports.NANI_NAMESERVERS.length,
+        attentionItems: domains.filter((d) => d.status === "Attention").length,
+    };
+}
+function seedDashboard() {
+    return {
+        domains: exports.seedDomains,
+        records: exports.seedRecords,
+        stats: computeStats(exports.seedDomains),
+    };
+}
+exports.workflow = [
+    "Create an account and add a domain, including African ccTLDs like .cd, .ke, .co.za, and .africa.",
+    "Nani creates a PowerDNS zone and assigns ns1.nani.dns plus ns2.nani.dns.",
+    "Manage A, AAAA, CNAME, MX, TXT, and NS records from one dashboard while the API syncs changes to PowerDNS.",
+    "Monitor health, TTLs, pending changes, and enterprise readiness as the platform grows toward registrar services.",
+];
+//# sourceMappingURL=index.js.map

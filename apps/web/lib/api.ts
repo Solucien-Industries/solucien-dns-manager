@@ -607,3 +607,34 @@ export async function sendEmail(
 
   return (await res.json()) as SendEmailResult;
 }
+
+export type SendSmsInput = {
+  to: string;
+  message: string;
+  from?: string;
+};
+
+export type SendSmsResult = {
+  provider: string;
+  status: string;
+  messageId: string;
+  to: string;
+  message: string;
+  tenantId: string;
+  note?: string;
+};
+
+/** Send an SMS through the platform SMS API (POST /api/sms/send). */
+export async function sendSms(accessToken: string, input: SendSmsInput): Promise<SendSmsResult> {
+  const res = await fetch(`${apiBaseUrl()}/api/sms/send`, {
+    method: "POST",
+    headers: authHeaders(accessToken, true),
+    body: JSON.stringify(input),
+  });
+
+  if (!res.ok) {
+    throw new Error(await readApiError(res));
+  }
+
+  return (await res.json()) as SendSmsResult;
+}

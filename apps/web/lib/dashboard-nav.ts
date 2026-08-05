@@ -10,6 +10,7 @@ import {
   Settings,
   Shield,
   ShieldCheck,
+  Smartphone,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -23,7 +24,7 @@ export type DashboardSection =
   | "admin"
   | "settings";
 
-export type SettingsTab = "api" | "billing" | "smtp" | "email" | "users";
+export type SettingsTab = "api" | "billing" | "smtp" | "email" | "sms" | "users";
 
 export type NavItem = {
   id: DashboardSection;
@@ -83,6 +84,12 @@ export const SETTINGS_TABS: SettingsNavItem[] = [
     label: "Email",
     icon: Inbox,
     description: "Emails sent and received through the SMTP relay.",
+  },
+  {
+    id: "sms",
+    label: "SMS",
+    icon: Smartphone,
+    description: "Send and review outbound SMS traffic through the platform gateway.",
   },
   {
     id: "users",

@@ -49,6 +49,15 @@ export class AuthController {
     });
   }
 
+  /** Convenience local token endpoint for manual terminal testing. */
+  @Post("token")
+  token(@Body() dto: PasswordLoginDto, @Req() req: Request) {
+    return this.auth.loginWithPassword(dto, {
+      ip: clientIp(req),
+      userAgent: req.headers["user-agent"] ?? null,
+    });
+  }
+
   /** Return the current authenticated principal. */
   @Get("me")
   @ApiBearerAuth()

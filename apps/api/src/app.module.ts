@@ -20,7 +20,7 @@ import { AdminModule } from "./admin/admin.module";
 import { AuditModule } from "./audit/audit.module";
 import { AuditInterceptor } from "./audit/audit.interceptor";
 import { HealthController } from "./health/health.controller";
-import { SmsModule } from "./sms/sms";
+import { SmsModule } from "./sms/sms.module";
 
 @Module({
   imports: [

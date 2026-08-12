@@ -70,6 +70,10 @@ export class SmtpController {
     if (!fromEmail) {
       throw new BadRequestException("No sender identity set. Save a From email under SMTP settings, or pass fromEmail.");
     }
+
+    // Story #6: only allow sending from a verified/authorised domain.
+    await this.ses.assertSenderDomainAllowed(fromEmail, tenantId);
+
     return this.mail.sendMail({
       from: fromEmail,
       fromName: sender.fromName,

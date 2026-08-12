@@ -1,4 +1,4 @@
-import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
+import { ForbiddenException, Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import {
   CreateConfigurationSetCommand,
   CreateEmailIdentityCommand,
@@ -77,7 +77,7 @@ export class SesAdminService {
   }
 
   /**
-   * Register a customer domain in SES (Easy DKIM), ensure the tenant's
+   * Register a customer domain in SES (Easy DKIM), ensure the tenants
    * configuration set exists, link the identity to it, and return the DKIM
    * CNAME records the customer must publish in their DNS.
    */
@@ -100,7 +100,7 @@ export class SesAdminService {
       this.logger.log(`Created SES identity for ${normalized}`);
     } catch (error) {
       if (this.errorName(error) === "AlreadyExistsException") {
-        // Already registered — fetch its tokens and make sure it's linked.
+        // Already registered — fetch its tokens and make sure its limked
         const existing = await client.send(new GetEmailIdentityCommand({ EmailIdentity: normalized }));
         tokens = existing.DkimAttributes?.Tokens ?? [];
         await client.send(
@@ -174,4 +174,48 @@ export class SesAdminService {
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : "Unknown SES error";
   }
+
+  /**
+   * Story #6 — sender authorisation. Enforces that a message may only be sent
+   * from a domain that is verified for sending. This is the application-layer
+   * guard; SES itself is the hard backstop (it rejects unverified sender
+   * domains with a 554 at send time), so this method fails OPEN on any
+   * infrastructure/unconfigured condition and only ever BLOCKS on a definitive
+   * "domain is not verified" result. That keeps local/dev sending working while
+   * still rejecting spoofed domains cleanly wherever SES admin is configured.
+   *
+   * NOTE: full cross-tenant isolation (tenant A cannot use tenant B's verified
+   * domain) additionally requires the per-tenant domain store; the tenantId is
+   * accepted here so that check can be added without changing callers.
+   */
+  async assertSenderDomainAllowed(fromEmail: string, _tenantId: string): Promise<void> {
+    const domain = fromEmail.split("@")[1]?.trim().toLowerCase();
+    if (!domain) {
+      throw new ForbiddenException("Sender address is missing a domain.");
+    }
+
+    if (!this.isConfigured()) {
+      // Dev / unconfigured: SES's own relay still rejects unverified senders.
+      this.logger.warn(
+        `Sender authorisation skipped for ${domain} (SES admin not configured); relying on SES to reject unverified senders.`,
+      );
+      return;
+    }
+
+    try {
+      const status = await this.getDomainStatus(domain);
+      if (!status.verified) {
+        throw new ForbiddenException(
+          `Domain "${domain}" is not verified for sending. Verify it before sending from it.`,
+        );
+      }
+    } catch (error) {
+      if (error instanceof ForbiddenException) throw error;
+      // Infrastructure error (e.g. transient SES/API failure): fail open and let
+      // SES be the backstop, rather than blocking legitimate mail on a hiccup.
+      const message = error instanceof Error ? error.message : "unknown error";
+      this.logger.warn(`Sender authorisation check could not complete for ${domain}: ${message}`);
+    }
+  }
+
 }

@@ -269,7 +269,7 @@ export function SettingsPanel({ accessToken, activeTab, onTabChange, user }: Set
           {activeTab === "api" ? <ApiSettingsTab accessToken={accessToken} /> : null}
           {activeTab === "billing" ? <BillingSettingsTab /> : null}
           {activeTab === "smtp" ? <SmtpSettingsTab accessToken={accessToken} /> : null}
-          {activeTab === "email" ? <EmailActivityTab /> : null}
+          {activeTab === "email" ? <EmailActivityTab accessToken={accessToken} /> : null}
           {activeTab === "users" ? <UsersSettingsTab user={user} /> : null}
         </div>
       </div>

@@ -179,7 +179,7 @@ export function SmtpSettingsTab({ accessToken }: SmtpSettingsTabProps) {
       <div>
         <h3 className="font-semibold">Email delivery relay</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Send mail through the Nani SMTP relay ({config.relay.host}) instead of the REST API.
+          Manage sending credentials and submit transactional email through the Nani API.
         </p>
       </div>
 
@@ -257,7 +257,7 @@ export function SmtpSettingsTab({ accessToken }: SmtpSettingsTabProps) {
                 <p className="mt-1 text-sm text-muted-foreground">
                   {config.credential.configured
                     ? `Active credential ${config.credential.prefix}…`
-                    : "Generate a workspace password."}
+                    : "Generate a Nani application credential (a customer SMTP relay is not yet deployed)."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">

@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "crypto";
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
 
 export type SmtpPortOption = {
   port: number;
@@ -40,24 +41,15 @@ export type SmtpServer = {
   primary: boolean;
 };
 
-type StoredSmtpCredential = {
-  id: string;
-  prefix: string;
-  passwordHash: string;
-  tenantId: string;
-  userId: string;
-  createdAt: string;
-  lastUsedAt: string | null;
-};
-
 const PASSWORD_PREFIX = "nani_smtp_";
 
 @Injectable()
 export class SmtpService {
   private readonly logger = new Logger(SmtpService.name);
-  private readonly credentials = new Map<string, StoredSmtpCredential>();
   private readonly senders = new Map<string, SmtpSenderSettings>();
   private readonly servers = new Map<string, Map<string, SmtpServer>>();
+
+  constructor(private readonly prisma: PrismaService) {}
 
   private defaultServers(): SmtpServer[] {
     const relay = this.getRelayConfig();
@@ -119,12 +111,12 @@ export class SmtpService {
   }
 
   getRelayConfig(): SmtpRelayConfig {
-    const submissionPort = Number(process.env.SMTP_RELAY_PORT ?? 587);
-    const implicitTlsPort = Number(process.env.SMTP_RELAY_TLS_PORT ?? 465);
+    const submissionPort = Number(process.env.SMTP_RELAY_PORT?.trim() || 587);
+    const implicitTlsPort = Number(process.env.SMTP_RELAY_TLS_PORT?.trim() || 465);
 
     return {
-      host: process.env.SMTP_RELAY_HOST ?? "smtp.nani.dns",
-      username: process.env.SMTP_RELAY_USERNAME ?? "nani",
+      host: process.env.SMTP_RELAY_HOST?.trim() || "smtp.nani.dns",
+      username: process.env.SMTP_RELAY_USERNAME?.trim() || "nani",
       ports: {
         submission: {
           port: submissionPort,
@@ -141,8 +133,9 @@ export class SmtpService {
     };
   }
 
-  getCredentialView(tenantId: string): SmtpCredentialView {
-    const match = [...this.credentials.values()].find((item) => item.tenantId === tenantId);
+  async getCredentialView(tenantId: string): Promise<SmtpCredentialView> {
+    if (!this.prisma.connected) return { configured: false, prefix: null, createdAt: null, lastUsedAt: null };
+    const match = await this.prisma.smtpCredential.findFirst({ where: { tenantId, status: "ACTIVE" }, orderBy: { createdAt: "desc" } });
     if (!match) {
       return { configured: false, prefix: null, createdAt: null, lastUsedAt: null };
     }
@@ -150,30 +143,25 @@ export class SmtpService {
     return {
       configured: true,
       prefix: match.prefix,
-      createdAt: match.createdAt,
-      lastUsedAt: match.lastUsedAt,
+      createdAt: match.createdAt.toISOString(),
+      lastUsedAt: match.lastUsedAt?.toISOString() ?? null,
     };
   }
 
-  generatePassword(tenantId: string, userId: string): { password: string; credential: SmtpCredentialView } {
+  async generatePassword(tenantId: string, userId: string, domainId?: string): Promise<{ password: string; credential: SmtpCredentialView; id: string; username: string }> {
     const secret = `${PASSWORD_PREFIX}${randomBytes(24).toString("base64url")}`;
-    const passwordHash = this.hashSecret(secret);
+    const secretHash = this.hashSecret(secret);
     const prefix = secret.slice(0, 16);
 
-    for (const [id, item] of this.credentials.entries()) {
-      if (item.tenantId === tenantId) this.credentials.delete(id);
+    if (!this.prisma.connected) throw new NotFoundException("SMTP credentials require PostgreSQL.");
+    const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId }, select: { id: true } });
+    if (!user) throw new NotFoundException("Credential owner not found in this workspace.");
+    if (domainId) {
+      const domain = await this.prisma.domain.findFirst({ where: { id: domainId, tenantId }, select: { id: true } });
+      if (!domain) throw new NotFoundException("Domain not found in this workspace.");
     }
-
-    const record: StoredSmtpCredential = {
-      id: `smtp_${randomBytes(8).toString("hex")}`,
-      prefix,
-      passwordHash,
-      tenantId,
-      userId,
-      createdAt: new Date().toISOString(),
-      lastUsedAt: null,
-    };
-    this.credentials.set(record.id, record);
+    const username = `smtp_${randomBytes(12).toString("hex")}`;
+    const record = await this.prisma.smtpCredential.create({ data: { name: "SMTP credential", username, prefix, secretHash, tenantId, domainId, createdById: user.id } });
     this.logger.log(`Generated SMTP password for tenant ${tenantId}`);
 
     return {
@@ -181,16 +169,37 @@ export class SmtpService {
       credential: {
         configured: true,
         prefix: record.prefix,
-        createdAt: record.createdAt,
+        createdAt: record.createdAt.toISOString(),
         lastUsedAt: null,
       },
+      id: record.id,
+      username: record.username,
     };
   }
 
-  revokePassword(tenantId: string): void {
-    for (const [id, item] of this.credentials.entries()) {
-      if (item.tenantId === tenantId) this.credentials.delete(id);
-    }
+  async revokePassword(tenantId: string, id?: string): Promise<void> {
+    if (!this.prisma.connected) return;
+    const target = id
+      ? await this.prisma.smtpCredential.findFirst({ where: { id, tenantId, status: "ACTIVE" }, select: { id: true } })
+      : await this.prisma.smtpCredential.findFirst({ where: { tenantId, status: "ACTIVE" }, orderBy: { createdAt: "desc" }, select: { id: true } });
+    if (!target) throw new NotFoundException("Active SMTP credential not found.");
+    await this.prisma.smtpCredential.update({ where: { id: target.id }, data: { status: "REVOKED", revokedAt: new Date() } });
+  }
+
+  async rotatePassword(tenantId: string, userId: string, id: string) {
+    const current = await this.prisma.smtpCredential.findFirst({ where: { id, tenantId, status: "ACTIVE" } });
+    if (!current) throw new NotFoundException("Active SMTP credential not found.");
+    const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId }, select: { id: true } });
+    if (!user) throw new NotFoundException("Credential owner not found in this workspace.");
+    const secret = `${PASSWORD_PREFIX}${randomBytes(24).toString("base64url")}`;
+    const prefix = secret.slice(0, 16);
+    const username = `smtp_${randomBytes(12).toString("hex")}`;
+    const now = new Date();
+    const [, record] = await this.prisma.$transaction([
+      this.prisma.smtpCredential.update({ where: { id }, data: { status: "REVOKED", revokedAt: now, rotatedAt: now } }),
+      this.prisma.smtpCredential.create({ data: { name: current.name, username, prefix, secretHash: this.hashSecret(secret), tenantId, domainId: current.domainId, createdById: user.id } }),
+    ]);
+    return { password: secret, id: record.id, username: record.username, credential: { configured: true, prefix: record.prefix, createdAt: record.createdAt.toISOString(), lastUsedAt: null } };
   }
 
   getSender(tenantId: string): SmtpSenderSettings {

@@ -17,6 +17,57 @@ enum DomainStatus {
   Attention
 }
 
+/// Sending (SMTP) verification lifecycle for a Domain. Separate from
+/// DomainStatus above, which describes the hosted PowerDNS zone's health.
+enum SendingVerificationStatus {
+  PENDING_VERIFICATION
+  VERIFYING
+  VERIFIED
+  FAILED
+}
+
+enum DomainOperationalStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum DnsVerificationStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+enum SmtpCredentialStatus {
+  ACTIVE
+  DISABLED
+  REVOKED
+}
+
+/// Lifecycle of a submitted message. QUEUED means "we durably own it" — never
+/// that a recipient received it.
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  DEFERRED
+  BOUNCED
+  COMPLAINED
+  FAILED
+}
+
+enum EmailEventType {
+  QUEUED
+  SENT
+  DELIVERED
+  DEFERRED
+  BOUNCED
+  COMPLAINED
+  OPENED
+  CLICKED
+  FAILED
+}
+
 enum RecordType {
   A
   AAAA
@@ -71,6 +122,8 @@ model Tenant {
   domains           Domain[]
   apiKeys           ApiKey[]
   approvedLocations ApprovedLocation[]
+  smtpCredentials   SmtpCredential[]
+  emailMessages     EmailMessage[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -98,6 +151,7 @@ model User {
   suspendedUntil  DateTime? // null while SUSPENDED = indefinite
   statusUpdatedAt DateTime?
 
+  smtpCredentials     SmtpCredential[]  @relation("SmtpCredentialCreator")
   moderationsReceived ModerationEvent[] @relation("ModerationTarget")
   moderationsIssued   ModerationEvent[] @relation("ModerationActor")
   notifications       Notification[]
@@ -143,10 +197,24 @@ model Domain {
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantId    String
   records     DnsRecord[]
+
+  // --- SMTP sending state (see SendingVerificationStatus / DomainOperationalStatus).
+  // A Domain is both a hosted zone and, once verified, a sending identity.
+  sendingVerification     SendingVerificationStatus @default(PENDING_VERIFICATION)
+  operationalStatus       DomainOperationalStatus   @default(ACTIVE)
+  verificationCheckedAt   DateTime?
+  verificationFailureCode String?
+  verifiedAt              DateTime?
+  suspensionReason        String?
+  returnPathHost          String? // e.g. "bounce.mail.example.com"; falls back to SMTP_BOUNCE_HOST
+  smtpCredentials         SmtpCredential[]
+  emailMessages           EmailMessage[]
+
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
   @@index([tenantId])
+  @@index([sendingVerification])
 }
 
 /// A single DNS record belonging to a domain/zone.
@@ -159,6 +227,13 @@ model DnsRecord {
   priority  Int? // used by MX
   domain    Domain     @relation(fields: [domainId], references: [id], onDelete: Cascade)
   domainId  String
+
+  // --- Per-record sending verification (story 3).
+  requiredForSending Boolean               @default(false)
+  verificationStatus DnsVerificationStatus @default(PENDING)
+  lastCheckedAt      DateTime?
+  failureCode        String?
+
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -271,4 +346,138 @@ model ApiKeyUsageEvent {
 
   @@index([tenantId, createdAt])
   @@index([apiKeyId])
+}
+
+
+// ============================================================================
+// SMTP transactional email
+//
+// Reconstructed from migration 20260813193000_smtp_transactional_email, which
+// created these tables but was never reflected back into this schema — which is
+// why `sender-authorization.ts` imports Prisma types that did not exist.
+//
+// Story 8 (accept and queue an SMTP message) adds the raw-MIME fields marked
+// below. Everything else matches the original migration.
+// ============================================================================
+
+/// SMTP AUTH credential. Secrets are high-entropy and platform-generated, so a
+/// single SHA-256 is an adequate verifier and stays fast enough to run on every
+/// AUTH command.
+model SmtpCredential {
+  id          String               @id @default(cuid())
+  name        String
+  username    String               @unique
+  prefix      String
+  secretHash  String               @unique
+  status      SmtpCredentialStatus @default(ACTIVE)
+
+  tenant      Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId    String
+  domain      Domain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  domainId    String? // null = workspace-scoped, set = domain-scoped
+  createdBy   User    @relation("SmtpCredentialCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  createdById String
+
+  lastUsedAt  DateTime?
+  lastUsedIp  String?
+  revokedAt   DateTime?
+  rotatedAt   DateTime?
+
+  messages    EmailMessage[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId, status])
+  @@index([domainId])
+  @@index([createdById])
+}
+
+/// One submitted message, from either the REST API or the SMTP relay.
+model EmailMessage {
+  id                String  @id @default(cuid())
+  tenant            Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+  domain            Domain  @relation(fields: [domainId], references: [id])
+  domainId          String
+  credential        SmtpCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+  credentialId      String?
+
+  providerMessageId String? @unique
+  headerFrom        String  // RFC 5322 From — what the recipient sees
+  envelopeFrom      String? // platform return-path, for bounce processing
+  recipients        String[]
+  /// Nullable: an SMTP submission may legitimately carry no Subject header.
+  subject           String?
+  replyTo           String?
+
+  // --- API-submitted bodies. Null for SMTP submissions, which carry raw MIME.
+  contentText       String?
+  contentHtml       String?
+
+  // --- Story 8: SMTP submission fields --------------------------------------
+  /// SMTP = relay submission, API = REST submission. Decides whether the
+  /// delivery worker reads `raw` or reconstructs from contentText/contentHtml.
+  source            MessageSource @default(API)
+  /// What the client actually sent in MAIL FROM, before we rewrote it.
+  submittedMailFrom String?
+  headerFromName    String?
+  messageIdHeader   String?
+  sizeBytes         Int?
+  remoteIp          String?
+  sessionId         String?
+  raw               EmailMessageBlob?
+  // --------------------------------------------------------------------------
+
+  status              MessageStatus @default(QUEUED)
+  attempts            Int           @default(0)
+  nextAttemptAt       DateTime      @default(now())
+  processingStartedAt DateTime?
+  failureReason       String?
+  sentAt              DateTime?
+
+  events    EmailEvent[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@index([domainId])
+  @@index([credentialId])
+  @@index([status, nextAttemptAt])
+}
+
+enum MessageSource {
+  API
+  SMTP
+}
+
+/// Story 8. Raw MIME exactly as received, in its own table so log queries never
+/// drag megabytes of body through Postgres.
+///
+/// Byte-identical storage is not optional: DKIM signs the original bytes, so
+/// reconstructing a message from parsed fields produces a signature over
+/// different bytes than the ones sent, and every recipient fails verification.
+/// This is also the only place attachments, custom headers and multipart
+/// structure survive — contentText/contentHtml cannot represent them.
+model EmailMessageBlob {
+  messageId String       @id
+  message   EmailMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  mime      Bytes
+  createdAt DateTime     @default(now())
+}
+
+model EmailEvent {
+  id              String       @id @default(cuid())
+  message         EmailMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId       String
+  /// Nullable: events we generate ourselves (QUEUED at intake) have no upstream
+  /// provider id. Postgres permits many NULLs under a unique index, so provider
+  /// events stay deduplicated.
+  providerEventId String?      @unique
+  type            EmailEventType
+  details         Json?
+  occurredAt      DateTime     @default(now())
+  createdAt       DateTime     @default(now())
+
+  @@index([messageId, occurredAt])
 }

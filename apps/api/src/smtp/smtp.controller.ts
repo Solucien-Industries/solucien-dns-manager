@@ -9,6 +9,7 @@ import { UpdateSmtpServerDto } from "./dto/update-smtp-server.dto";
 import { MailService } from "./mail.service";
 import { SesAdminService } from "./ses-admin.service";
 import { SmtpService } from "./smtp.service";
+import { MessagesService } from "../messages/messages.service";
 
 @ApiTags("smtp")
 @ApiBearerAuth()
@@ -19,15 +20,16 @@ export class SmtpController {
     private readonly smtp: SmtpService,
     private readonly mail: MailService,
     private readonly ses: SesAdminService,
+    private readonly messages: MessagesService,
   ) {}
 
   @Get()
-  get(@Req() req: Request) {
+  async get(@Req() req: Request) {
     const user = req.user as { tenantId?: string };
     const tenantId = user.tenantId ?? "ephemeral-tenant";
     return {
       relay: this.smtp.getRelayConfig(),
-      credential: this.smtp.getCredentialView(tenantId),
+      credential: await this.smtp.getCredentialView(tenantId),
       sender: this.smtp.getSender(tenantId),
       sendingConfigured: this.mail.isConfigured(),
       onboardingConfigured: this.ses.isConfigured(),
@@ -36,15 +38,27 @@ export class SmtpController {
   }
 
   @Post("credentials")
-  generateCredentials(@Req() req: Request) {
+  generateCredentials(@Req() req: Request, @Body() body: { domainId?: string } = {}) {
     const user = req.user as { userId?: string; tenantId?: string };
-    return this.smtp.generatePassword(user.tenantId ?? "ephemeral-tenant", user.userId ?? "ephemeral");
+    return this.smtp.generatePassword(user.tenantId ?? "ephemeral-tenant", user.userId ?? "ephemeral", body.domainId);
   }
 
   @Delete("credentials")
-  revokeCredentials(@Req() req: Request) {
+  async revokeCredentials(@Req() req: Request) {
     const user = req.user as { tenantId?: string };
-    this.smtp.revokePassword(user.tenantId ?? "ephemeral-tenant");
+    await this.smtp.revokePassword(user.tenantId ?? "ephemeral-tenant");
+    return { revoked: true };
+  }
+
+  @Post("credentials/:id/rotate")
+  rotateCredential(@Param("id") id: string, @Req() req: Request) {
+    const user = req.user as { userId?: string; tenantId?: string };
+    return this.smtp.rotatePassword(user.tenantId ?? "ephemeral-tenant", user.userId ?? "ephemeral", id);
+  }
+
+  @Delete("credentials/:id")
+  async revokeCredential(@Param("id") id: string, @Req() req: Request) {
+    await this.smtp.revokePassword((req.user as { tenantId?: string }).tenantId ?? "ephemeral-tenant", id);
     return { revoked: true };
   }
 
@@ -70,15 +84,7 @@ export class SmtpController {
     if (!fromEmail) {
       throw new BadRequestException("No sender identity set. Save a From email under SMTP settings, or pass fromEmail.");
     }
-    return this.mail.sendMail({
-      from: fromEmail,
-      fromName: sender.fromName,
-      to: dto.to,
-      subject: dto.subject,
-      text: dto.text,
-      html: dto.html,
-      replyTo: dto.replyTo,
-    });
+    return this.messages.submit(tenantId, dto, fromEmail, sender.fromName);
   }
 
   /**
@@ -94,8 +100,8 @@ export class SmtpController {
 
   /** Verification + DKIM status for a customer sending domain. */
   @Get("domains/:domain")
-  domainStatus(@Param("domain") domain: string) {
-    return this.ses.getDomainStatus(domain);
+  domainStatus(@Param("domain") domain: string, @Req() req: Request) {
+    return this.ses.verifyOwnedDomain(domain, (req.user as { tenantId: string }).tenantId);
   }
 
   @Get("servers")

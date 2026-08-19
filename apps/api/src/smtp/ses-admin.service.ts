@@ -1,4 +1,4 @@
-import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
+import { ForbiddenException, Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import {
   CreateConfigurationSetCommand,
   CreateEmailIdentityCommand,
@@ -6,6 +6,8 @@ import {
   PutEmailIdentityConfigurationSetAttributesCommand,
   SESv2Client,
 } from "@aws-sdk/client-sesv2";
+import { PrismaService } from "../prisma/prisma.service";
+import { parseSenderDomain, senderDomainRejection } from "./sender-authorization";
 
 export type DkimRecord = {
   name: string;
@@ -18,6 +20,11 @@ export type DomainOnboardResult = {
   configurationSet: string;
   dkimRecords: DkimRecord[];
   status: DomainStatus;
+  dnsGuidance: {
+    spf: string;
+    dmarc: { name: string; type: "TXT"; suggestedValue: string };
+    customMailFrom: string;
+  };
 };
 
 export type DomainStatus = {
@@ -46,9 +53,11 @@ export class SesAdminService {
   private readonly logger = new Logger(SesAdminService.name);
   private client: SESv2Client | null = null;
 
+  constructor(private readonly prisma: PrismaService) {}
+
   private getClient(): SESv2Client {
     if (this.client) return this.client;
-    const region = process.env.AWS_REGION ?? process.env.SES_REGION;
+    const region = process.env.AWS_REGION?.trim() || process.env.SES_REGION?.trim();
     if (!region) {
       throw new ServiceUnavailableException(
         "SES admin is not configured. Set AWS_REGION (and AWS credentials).",
@@ -60,7 +69,7 @@ export class SesAdminService {
   }
 
   isConfigured(): boolean {
-    return Boolean(process.env.AWS_REGION ?? process.env.SES_REGION);
+    return Boolean(process.env.AWS_REGION?.trim() || process.env.SES_REGION?.trim());
   }
 
   /** Config set name is deterministic per tenant so it's easy to find and reuse. */
@@ -84,6 +93,9 @@ export class SesAdminService {
   async onboardDomain(domain: string, tenantId: string): Promise<DomainOnboardResult> {
     const client = this.getClient();
     const normalized = domain.trim().toLowerCase().replace(/\.$/, "");
+    if (!this.prisma.connected) throw new ServiceUnavailableException("SMTP domain onboarding requires PostgreSQL.");
+    const owned = await this.prisma.domain.findUnique({ where: { name: normalized } });
+    if (!owned || owned.tenantId !== tenantId) throw new ForbiddenException("Register this domain in your workspace before SMTP onboarding.");
     const configurationSet = this.configSetName(tenantId);
 
     await this.ensureConfigurationSet(configurationSet);
@@ -118,12 +130,60 @@ export class SesAdminService {
     }
 
     const status = await this.getDomainStatus(normalized);
+    const records = this.toDkimRecords(normalized, tokens);
+    await this.prisma.$transaction([
+      this.prisma.domain.update({ where: { id: owned.id }, data: { sendingVerification: status.verified ? "VERIFIED" : "PENDING_VERIFICATION", verificationCheckedAt: new Date(), verificationFailureCode: status.verified ? null : `SES_${status.dkimStatus}`, verifiedAt: status.verified ? new Date() : null } }),
+      ...records.map((record) => this.prisma.dnsRecord.upsert({
+        where: { id: `ses-dkim-${owned.id}-${record.name.split(".")[0]}` },
+        create: { id: `ses-dkim-${owned.id}-${record.name.split(".")[0]}`, domainId: owned.id, type: "CNAME", name: record.name, value: record.value, requiredForSending: true, verificationStatus: status.verified ? "VERIFIED" : "PENDING", lastCheckedAt: new Date() },
+        update: { value: record.value, requiredForSending: true, verificationStatus: status.verified ? "VERIFIED" : "PENDING", lastCheckedAt: new Date(), failureCode: status.verified ? null : `SES_${status.dkimStatus}` },
+      })),
+    ]);
     return {
       domain: normalized,
       configurationSet,
-      dkimRecords: this.toDkimRecords(normalized, tokens),
+      dkimRecords: records,
       status,
+      dnsGuidance: {
+        spf: "Publish only one SPF policy. Merge include:amazonses.com into an existing SPF record; create v=spf1 include:amazonses.com ~all only when no SPF record exists.",
+        dmarc: { name: `_dmarc.${normalized}`, type: "TXT", suggestedValue: "v=DMARC1; p=none; rua=mailto:dmarc@YOUR-REPORTING-DOMAIN" },
+        customMailFrom: "Custom MAIL FROM/return-path is not automated. Configure a dedicated SES MAIL FROM subdomain and publish the exact SES-provided MX and SPF records.",
+      },
     };
+  }
+
+  async verifyOwnedDomain(domain: string, tenantId: string): Promise<DomainStatus> {
+    const normalized = domain.trim().toLowerCase().replace(/\.$/, "");
+    if (!this.prisma.connected) throw new ServiceUnavailableException("SMTP verification requires PostgreSQL.");
+    const owned = await this.prisma.domain.findFirst({ where: { name: normalized, tenantId } });
+    if (!owned) throw new ForbiddenException("Domain is not owned by this workspace.");
+    await this.prisma.domain.update({ where: { id: owned.id }, data: { sendingVerification: "VERIFYING", verificationFailureCode: null } });
+    try {
+      const status = await this.getDomainStatus(normalized);
+      await this.prisma.$transaction([
+        this.prisma.domain.update({ where: { id: owned.id }, data: { sendingVerification: status.verified ? "VERIFIED" : "PENDING_VERIFICATION", verificationCheckedAt: new Date(), verificationFailureCode: status.verified ? null : `SES_${status.dkimStatus}`, verifiedAt: status.verified ? new Date() : null } }),
+        this.prisma.dnsRecord.updateMany({ where: { domainId: owned.id, requiredForSending: true }, data: { verificationStatus: status.verified ? "VERIFIED" : "PENDING", lastCheckedAt: new Date(), failureCode: status.verified ? null : `SES_${status.dkimStatus}` } }),
+      ]);
+      return status;
+    } catch (error) {
+      await this.prisma.domain.update({ where: { id: owned.id }, data: { sendingVerification: "FAILED", verificationCheckedAt: new Date(), verificationFailureCode: "SES_LOOKUP_FAILED" } });
+      throw error;
+    }
+  }
+
+  async assertSenderDomainAllowed(fromEmail: string, tenantId: string, credentialId?: string) {
+    const domainName = parseSenderDomain(fromEmail);
+    if (!domainName) throw new ForbiddenException("Sender address is invalid.");
+    if (!this.prisma.connected) throw new ServiceUnavailableException("Sender authorisation requires PostgreSQL.");
+    const domain = await this.prisma.domain.findUnique({ where: { name: domainName } });
+    const rejection = senderDomainRejection(domain, tenantId);
+    if (rejection) throw new ForbiddenException(rejection);
+    if (!domain) throw new ForbiddenException("Sender domain is not authorised.");
+    if (credentialId) {
+      const credential = await this.prisma.smtpCredential.findFirst({ where: { id: credentialId, tenantId, status: "ACTIVE", OR: [{ domainId: null }, { domainId: domain.id }] } });
+      if (!credential) throw new ForbiddenException("SMTP credential is revoked, disabled, or outside its domain scope.");
+    }
+    return domain;
   }
 
   /** Current verification + DKIM status for a domain identity. */

@@ -71,3 +71,13 @@ reject it.
 - **Customer-facing relay:** this makes *the application* send via SES. If Nani
   is also meant to expose `smtp.nani.dns` as a relay customers point their own
   apps at, that's a separate piece of infrastructure (running/hosting a relay).
+
+## Transactional message queue and SES events
+
+Apply `apps/api/prisma/migrations/20260813193000_smtp_transactional_email/migration.sql` after the existing database schema is present. The migration is additive and does not drop or rewrite existing Domain/DNS data. Because this repository has no historical baseline migrations, a brand-new database must first be initialized/baselined with the pre-SMTP schema.
+
+Set `SES_EVENT_WEBHOOK_SECRET` to a high-entropy value. Configure SES configuration-set events for delivery, bounce, complaint, delay, open, and click. Route SNS/EventBridge through API Gateway/Lambda or another authenticated adapter to `POST /api/messages/events/ses`, adding the secret as `x-nani-webhook-secret`.
+
+The endpoint accepts either a direct SES event (`eventType` or `notificationType`, plus `mail.messageId`) or an SNS notification envelope whose `Message` is the JSON-encoded SES event. Duplicate provider event IDs are idempotent.
+
+Live test sequence: register the domain, call `POST /api/smtp/domains`, publish returned DKIM CNAMEs, poll `GET /api/smtp/domains/:domain`, submit using `POST /api/messages`, and inspect `GET /api/messages/:id` as authenticated SES events arrive.

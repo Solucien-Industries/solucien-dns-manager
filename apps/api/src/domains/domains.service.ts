@@ -60,8 +60,8 @@ export class DomainsService {
     }));
   }
 
-  async findOne(name: string): Promise<SharedDomain> {
-    const all = await this.findAll();
+  async findOne(name: string, tenantId?: string): Promise<SharedDomain> {
+    const all = await this.findAll(tenantId);
     const found = all.find((d) => d.name === name);
     if (!found) throw new NotFoundException(`Domain ${name} not found`);
     return found;
@@ -129,9 +129,9 @@ export class DomainsService {
     };
   }
 
-  async verifyDelegation(name: string): Promise<DomainVerification> {
+  async verifyDelegation(name: string, tenantId: string): Promise<DomainVerification> {
     const domainName = name.trim().toLowerCase();
-    await this.findOne(domainName);
+    await this.findOne(domainName, tenantId);
 
     const expected = NANI_NAMESERVERS.map(normalizeNs);
     let detected: string[] = [];
@@ -147,7 +147,7 @@ export class DomainsService {
     const state = verified ? "verified" : matched.length > 0 ? "propagating" : "pending";
 
     if (verified) {
-      await this.markDomainActive(domainName);
+      await this.markDomainActive(domainName, tenantId);
     }
 
     const message = verified
@@ -170,8 +170,8 @@ export class DomainsService {
     };
   }
 
-  async exportZone(name: string): Promise<{ domain: string; format: "bind"; content: string }> {
-    const domain = await this.findOne(name);
+  async exportZone(name: string, tenantId: string): Promise<{ domain: string; format: "bind"; content: string }> {
+    const domain = await this.findOne(name, tenantId);
     const records = await this.records.findAll(domain.name);
     const lines = [
       `; Zone export for ${domain.name}`,
@@ -188,7 +188,7 @@ export class DomainsService {
     return { domain: domain.name, format: "bind", content: lines.join("\n") };
   }
 
-  private async markDomainActive(name: string): Promise<void> {
+  private async markDomainActive(name: string, tenantId: string): Promise<void> {
     const ephemeral = this.ephemeralDomains.get(name);
     if (ephemeral) {
       this.ephemeralDomains.set(name, {
@@ -201,7 +201,7 @@ export class DomainsService {
 
     if (this.prisma.connected) {
       await this.prisma.domain.updateMany({
-        where: { name },
+        where: { name, tenantId },
         data: { status: "Active", uptime: "99.99%", lastSyncAt: new Date() },
       });
     }

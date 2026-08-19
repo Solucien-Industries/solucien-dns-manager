@@ -586,9 +586,26 @@ export type SendEmailInput = {
 
 export type SendEmailResult = {
   messageId: string;
+  status?: "QUEUED";
   accepted: string[];
   rejected: string[];
 };
+
+export type EmailMessage = {
+  id: string;
+  headerFrom: string;
+  recipients: string[];
+  subject: string;
+  status: "QUEUED" | "SENT" | "DELIVERED" | "DEFERRED" | "BOUNCED" | "COMPLAINED" | "FAILED";
+  createdAt: string;
+  domain: { name: string };
+};
+
+export async function listMessages(accessToken: string): Promise<{ items: EmailMessage[]; nextCursor: string | null }> {
+  const res = await fetch(`${apiBaseUrl()}/api/messages?limit=100`, { headers: authHeaders(accessToken), cache: "no-store" });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return (await res.json()) as { items: EmailMessage[]; nextCursor: string | null };
+}
 
 /** Send an email through the platform SES relay (POST /api/smtp/send). */
 export async function sendEmail(

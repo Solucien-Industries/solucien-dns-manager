@@ -6,3 +6,13 @@ build/
 .env
 .env.local
 .DS_Store
+
+apps/api/certs/
+
+apps/api/certs/
+
+apps/api/certs/
+
+.turbo/
+agent.md
+nani.zip

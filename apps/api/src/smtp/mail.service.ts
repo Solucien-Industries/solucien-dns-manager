@@ -21,6 +21,13 @@ export type SendMailResult = {
   rejected: string[];
 };
 
+export class MailSubmissionError extends Error {
+  constructor(message: string, readonly retrySafe: boolean) {
+    super(message);
+    this.name = "MailSubmissionError";
+  }
+}
+
 /**
  * Sends real email through AWS SES over SMTP (shared platform account).
  *
@@ -42,10 +49,10 @@ export class MailService {
   private getTransporter(): Transporter {
     if (this.transporter) return this.transporter;
 
-    const host = process.env.SES_SMTP_HOST;
-    const username = process.env.SES_SMTP_USERNAME;
-    const password = process.env.SES_SMTP_PASSWORD;
-    const port = Number(process.env.SES_SMTP_PORT ?? 587);
+    const host = process.env.SES_SMTP_HOST?.trim();
+    const username = process.env.SES_SMTP_USERNAME?.trim();
+    const password = process.env.SES_SMTP_PASSWORD?.trim();
+    const port = Number(process.env.SES_SMTP_PORT?.trim() || 587);
 
     if (!host || !username || !password) {
       throw new ServiceUnavailableException(
@@ -59,7 +66,7 @@ export class MailService {
       secure: port === 465,
       auth: { user: username, pass: password },
       tls: {
-        rejectUnauthorized: false,   // dev-only: tolerate local TLS interception
+        rejectUnauthorized: process.env.NODE_ENV === "production" || process.env.SMTP_ALLOW_INSECURE_TLS?.trim() !== "true",
       },
     });
 
@@ -70,9 +77,9 @@ export class MailService {
   /** True when the SES SMTP env vars are present. Useful for health checks. */
   isConfigured(): boolean {
     return Boolean(
-      process.env.SES_SMTP_HOST &&
-        process.env.SES_SMTP_USERNAME &&
-        process.env.SES_SMTP_PASSWORD,
+      process.env.SES_SMTP_HOST?.trim() &&
+        process.env.SES_SMTP_USERNAME?.trim() &&
+        process.env.SES_SMTP_PASSWORD?.trim(),
     );
   }
 
@@ -104,7 +111,9 @@ export class MailService {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown send failure";
       this.logger.error(`Failed to send email to ${input.to}: ${message}`);
-      throw new ServiceUnavailableException(`Email delivery failed: ${message}`);
+      const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+      const retrySafe = ["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"].includes(code);
+      throw new MailSubmissionError(`Email delivery failed: ${message}`, retrySafe);
     }
   }
 }

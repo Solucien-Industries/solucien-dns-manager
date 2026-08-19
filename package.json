@@ -12,6 +12,7 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
+    "test": "npm run test --workspaces --if-present",
     "start": "npm --workspace @solucien/api run start",
     "start:api": "npm --workspace @solucien/api run start"
   },

@@ -1,7 +1,5 @@
 
-
 > @solucien/api@0.1.0 lint
 > echo "(api) lint runs in CI via eslint"
 
-(api) lint runs in CI via eslint
-⠙[1G[0K
+"(api) lint runs in CI via eslint"

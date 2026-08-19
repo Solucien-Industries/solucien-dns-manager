@@ -203,9 +203,9 @@ export function SendEmailPanel({ accessToken, sender, sendingConfigured }: SendE
         <div className="mt-4 flex items-start gap-3 rounded-md border border-emerald-600/40 bg-panel p-4">
           <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
           <div className="min-w-0">
-            <p className="text-sm font-semibold">Email sent</p>
+            <p className="text-sm font-semibold">Email queued</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Delivered to the relay for {sent.accepted.length > 0 ? sent.accepted.join(", ") : "the recipient"}.
+              Accepted for asynchronous delivery to {sent.accepted.length > 0 ? sent.accepted.join(", ") : "the recipient"}.
             </p>
             <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{sent.messageId}</p>
           </div>

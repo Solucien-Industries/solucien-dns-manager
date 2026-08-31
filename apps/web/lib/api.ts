@@ -624,16 +624,56 @@ export type SendSmsResult = {
   note?: string;
 };
 
+/** Coarse buckets the SMS panel maps to distinct, actionable copy. */
+export type SmsErrorKind = "validation" | "rate-limit" | "quota" | "provider" | "network" | "unknown";
+
+export class SmsSendError extends Error {
+  readonly kind: SmsErrorKind;
+  readonly status: number | null;
+
+  constructor(kind: SmsErrorKind, message: string, status: number | null = null) {
+    super(message);
+    this.name = "SmsSendError";
+    this.kind = kind;
+    this.status = status;
+  }
+}
+
+const SMS_SEND_TIMEOUT_MS = 15_000;
+
+function classifySmsError(status: number, detail: string): SmsErrorKind {
+  const text = detail.toLowerCase();
+  if (status === 429) return text.includes("quota") ? "quota" : "rate-limit";
+  if (status === 400) return "validation";
+  if (status >= 500) return "provider";
+  return "unknown";
+}
+
 /** Send an SMS through the platform SMS API (POST /api/sms/send). */
 export async function sendSms(accessToken: string, input: SendSmsInput): Promise<SendSmsResult> {
-  const res = await fetch(`${apiBaseUrl()}/api/sms/send`, {
-    method: "POST",
-    headers: authHeaders(accessToken, true),
-    body: JSON.stringify(input),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SMS_SEND_TIMEOUT_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(`${apiBaseUrl()}/api/sms/send`, {
+      method: "POST",
+      headers: authHeaders(accessToken, true),
+      body: JSON.stringify(input),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new SmsSendError("network", "The request timed out. Check your connection and try again.");
+    }
+    throw new SmsSendError("network", "Couldn't reach the SMS service. Check your connection and try again.");
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!res.ok) {
-    throw new Error(await readApiError(res));
+    const detail = await readApiError(res);
+    throw new SmsSendError(classifySmsError(res.status, detail), detail, res.status);
   }
 
   return (await res.json()) as SendSmsResult;

@@ -86,7 +86,7 @@ export class SesAdminService {
   }
 
   /**
-   * Register a customer domain in SES (Easy DKIM), ensure the tenant's
+   * Register a customer domain in SES (Easy DKIM), ensure the tenants
    * configuration set exists, link the identity to it, and return the DKIM
    * CNAME records the customer must publish in their DNS.
    */
@@ -112,7 +112,7 @@ export class SesAdminService {
       this.logger.log(`Created SES identity for ${normalized}`);
     } catch (error) {
       if (this.errorName(error) === "AlreadyExistsException") {
-        // Already registered — fetch its tokens and make sure it's linked.
+        // Already registered — fetch its tokens and make sure its limked
         const existing = await client.send(new GetEmailIdentityCommand({ EmailIdentity: normalized }));
         tokens = existing.DkimAttributes?.Tokens ?? [];
         await client.send(
@@ -234,4 +234,8 @@ export class SesAdminService {
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : "Unknown SES error";
   }
+
+ 
+  
+
 }

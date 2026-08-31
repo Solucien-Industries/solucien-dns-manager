@@ -107,7 +107,9 @@ export class SmtpController {
     if (!fromEmail) {
       throw new BadRequestException("No sender identity set. Save a From email under SMTP settings, or pass fromEmail.");
     }
-    return this.messages.submit(tenantId, dto, fromEmail, sender.fromName);
+    await this.ses.assertSenderDomainAllowed(fromEmail, tenantId);
+
+    return this.messages.submit(tenantId, dto, fromEmail, sender.fromName);  
   }
 
 

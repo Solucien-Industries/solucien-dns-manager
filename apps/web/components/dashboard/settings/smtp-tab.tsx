@@ -5,10 +5,10 @@ import { Check, Copy, KeyRound, Lock, Mail, Pencil, Save, Server, Trash2, X } fr
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  generateSmtpPassword,
+  //generateSmtpPassword,
   getSmtpConfig,
   listSmtpServers,
-  revokeSmtpPassword,
+  //revokeSmtpPassword,
   updateSmtpSender,
   updateSmtpServer,
   type SmtpConfig,
@@ -16,12 +16,14 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { SendEmailPanel } from "@/components/dashboard/settings/send-email-panel";
+import { SendingDomainsPanel } from "@/components/dashboard/settings/sending-domains-panel";
+import { CredentialsPanel } from "@/components/dashboard/settings/credentials-panel";
 
 type SmtpSettingsTabProps = {
   accessToken: string;
 };
 
-type SubTab = "connection" | "servers" | "send";
+type SubTab = "connection" | "domains" | "credentials" | "servers" | "send";
 type PortMode = "submission" | "implicitTls";
 
 function CopyField({ label, value }: { label: string; value: string }) {
@@ -119,8 +121,8 @@ export function SmtpSettingsTab({ accessToken }: SmtpSettingsTabProps) {
     setError(null);
     setNewPassword(null);
     try {
-      const result = await generateSmtpPassword(accessToken);
-      setNewPassword(result.password);
+      //const result = await generateSmtpPassword(accessToken);
+      //setNewPassword(result.password);
       await refresh();
     } catch (generateError) {
       setError(generateError instanceof Error ? generateError.message : "Failed to generate SMTP password.");
@@ -132,7 +134,7 @@ export function SmtpSettingsTab({ accessToken }: SmtpSettingsTabProps) {
   async function handleRevoke() {
     setError(null);
     try {
-      await revokeSmtpPassword(accessToken);
+      //await revokeSmtpPassword(accessToken);
       setNewPassword(null);
       await refresh();
     } catch (revokeError) {
@@ -396,6 +398,9 @@ export function SmtpSettingsTab({ accessToken }: SmtpSettingsTabProps) {
           sendingConfigured={Boolean(config.sendingConfigured)}
         />
       ) : null}
+
+      {subTab === "domains" ? <SendingDomainsPanel accessToken={accessToken} /> : null}
+      {subTab === "credentials" ? <CredentialsPanel accessToken={accessToken} /> : null}
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
     </div>

@@ -184,7 +184,7 @@ export async function getSmtpConfig(accessToken: string): Promise<SmtpConfig> {
   return (await res.json()) as SmtpConfig;
 }
 
-export async function generateSmtpPassword(
+/*export async function generateSmtpPassword(
   accessToken: string,
 ): Promise<{ password: string; credential: SmtpConfig["credential"] }> {
   const res = await fetch(`${apiBaseUrl()}/api/smtp/credentials`, {
@@ -197,9 +197,9 @@ export async function generateSmtpPassword(
   }
 
   return (await res.json()) as { password: string; credential: SmtpConfig["credential"] };
-}
+}*/
 
-export async function revokeSmtpPassword(accessToken: string): Promise<void> {
+/*export async function revokeSmtpPassword(accessToken: string): Promise<void> {
   const res = await fetch(`${apiBaseUrl()}/api/smtp/credentials`, {
     method: "DELETE",
     headers: authHeaders(accessToken),
@@ -208,7 +208,7 @@ export async function revokeSmtpPassword(accessToken: string): Promise<void> {
   if (!res.ok) {
     throw new Error(await readApiError(res));
   }
-}
+}*/
 
 export async function updateSmtpSender(
   accessToken: string,
@@ -623,4 +623,118 @@ export async function sendEmail(
   }
 
   return (await res.json()) as SendEmailResult;
+}
+
+export type SendingDnsRecord = {
+  type: "CNAME" | "TXT" | "MX";
+  name: string;
+  value: string;
+  purpose: "DKIM" | "SPF" | "DMARC";
+  published: boolean;
+};
+ 
+export type SendingDomain = {
+  domain: string;
+  delegated: boolean;
+  sendingVerification: string;
+  operationalStatus: string;
+  canSend: boolean;
+  verifiedAt: string | null;
+  checkedAt: string | null;
+  records: SendingDnsRecord[];
+  message: string;
+};
+ 
+export type SmtpCredential = {
+  id: string;
+  name: string;
+  username: string;
+  prefix: string;
+  status: string;
+  domain: string | null;
+  createdAt: string;
+  lastUsedAt: string | null;
+  lastUsedIp: string | null;
+  rotatedAt: string | null;
+};
+ 
+export type SmtpCredentialCreated = {
+  credential: SmtpCredential;
+  /** Shown once. The server keeps only a hash. */
+  password: string;
+};
+ 
+async function readJson<T>(res: Response, fallback: string): Promise<T> {
+  if (!res.ok) {
+    // Surface the API's own message where there is one — "Delegate this
+    // domain's nameservers first" tells the user what to do; "Request failed"
+    // does not.
+    const body = (await res.json().catch(() => null)) as { message?: string | string[] } | null;
+    const message = Array.isArray(body?.message) ? body?.message.join(", ") : body?.message;
+    throw new Error(message || fallback);
+  }
+  return (await res.json()) as T;
+}
+ 
+export async function listSendingDomains(accessToken: string): Promise<SendingDomain[]> {
+  const res = await fetch(`${apiBaseUrl()}/api/smtp/sending-domains`, {
+    headers: authHeaders(accessToken),
+    cache: "no-store",
+  });
+  return readJson(res, "Could not load sending domains.");
+}
+ 
+export async function enableSendingDomain(accessToken: string, domain: string): Promise<SendingDomain> {
+  const res = await fetch(`${apiBaseUrl()}/api/smtp/sending-domains/${encodeURIComponent(domain)}/enable`, {
+    method: "POST",
+    headers: authHeaders(accessToken, true),
+  });
+  return readJson(res, "Could not set up email for this domain.");
+}
+ 
+export async function refreshSendingDomain(accessToken: string, domain: string): Promise<SendingDomain> {
+  const res = await fetch(`${apiBaseUrl()}/api/smtp/sending-domains/${encodeURIComponent(domain)}`, {
+    headers: authHeaders(accessToken),
+    cache: "no-store",
+  });
+  return readJson(res, "Could not check verification status.");
+}
+ 
+export async function listSmtpCredentials(accessToken: string): Promise<SmtpCredential[]> {
+  const res = await fetch(`${apiBaseUrl()}/api/smtp/credentials`, {
+    headers: authHeaders(accessToken),
+    cache: "no-store",
+  });
+  return readJson(res, "Could not load credentials.");
+}
+ 
+export async function createSmtpCredential(
+  accessToken: string,
+  input: { name?: string; domainId?: string },
+): Promise<SmtpCredentialCreated> {
+  const res = await fetch(`${apiBaseUrl()}/api/smtp/credentials`, {
+    method: "POST",
+    headers: authHeaders(accessToken, true),
+    body: JSON.stringify(input),
+  });
+  return readJson(res, "Could not create the credential.");
+}
+ 
+export async function rotateSmtpCredential(
+  accessToken: string,
+  id: string,
+): Promise<SmtpCredentialCreated> {
+  const res = await fetch(`${apiBaseUrl()}/api/smtp/credentials/${id}/rotate`, {
+    method: "POST",
+    headers: authHeaders(accessToken, true),
+  });
+  return readJson(res, "Could not rotate the credential.");
+}
+ 
+export async function revokeSmtpCredential(accessToken: string, id: string): Promise<SmtpCredential> {
+  const res = await fetch(`${apiBaseUrl()}/api/smtp/credentials/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+  });
+  return readJson(res, "Could not revoke the credential.");
 }

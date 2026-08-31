@@ -10,6 +10,8 @@ import { MailService } from "./mail.service";
 import { SesAdminService } from "./ses-admin.service";
 import { SmtpService } from "./smtp.service";
 import { MessagesService } from "../messages/messages.service";
+import { SendingDomainService } from "./sending-domain.service";
+import { SmtpCredentialsService } from "./smtp-credentials.service";
 
 @ApiTags("smtp")
 @ApiBearerAuth()
@@ -21,6 +23,8 @@ export class SmtpController {
     private readonly mail: MailService,
     private readonly ses: SesAdminService,
     private readonly messages: MessagesService,
+    private readonly sendingDomains: SendingDomainService,
+    private readonly credentials: SmtpCredentialsService,
   ) {}
 
   @Get()
@@ -37,30 +41,50 @@ export class SmtpController {
     };
   }
 
-  @Post("credentials")
-  generateCredentials(@Req() req: Request, @Body() body: { domainId?: string } = {}) {
-    const user = req.user as { userId?: string; tenantId?: string };
-    return this.smtp.generatePassword(user.tenantId ?? "ephemeral-tenant", user.userId ?? "ephemeral", body.domainId);
+
+  @Get("sending-domains")
+  listSendingDomains(@Req() req: Request) {
+    const user = req.user as { tenantId?: string };
+    return this.sendingDomains.list(user.tenantId ?? "ephemeral-tenant");
   }
 
-  @Delete("credentials")
-  async revokeCredentials(@Req() req: Request) {
+  @Post("sending-domains/:domain/enable")
+  enableSending(@Param("domain") domain: string, @Req() req: Request) {
     const user = req.user as { tenantId?: string };
-    await this.smtp.revokePassword(user.tenantId ?? "ephemeral-tenant");
-    return { revoked: true };
+    return this.sendingDomains.enableSending(domain, user.tenantId ?? "ephemeral-tenant");
+  }
+
+  @Get("sending-domains/:domain")
+  sendingDomainStatus(@Param("domain") domain: string, @Req() req: Request) {
+    const user = req.user as { tenantId?: string };
+    return this.sendingDomains.refreshVerification(domain, user.tenantId ?? "ephemeral-tenant");
+  }
+
+
+  @Get("credentials")
+  listCredentials(@Req() req: Request) {
+    const user = req.user as { tenantId?: string };
+    return this.credentials.list(user.tenantId ?? "ephemeral-tenant");
+  }
+
+  @Post("credentials")
+  createCredential(@Req() req: Request, @Body() body: { name?: string; domainId?: string } = {}) {
+    const user = req.user as { userId?: string; tenantId?: string };
+    return this.credentials.create(user.tenantId ?? "ephemeral-tenant", user.userId ?? "ephemeral", body);
   }
 
   @Post("credentials/:id/rotate")
   rotateCredential(@Param("id") id: string, @Req() req: Request) {
     const user = req.user as { userId?: string; tenantId?: string };
-    return this.smtp.rotatePassword(user.tenantId ?? "ephemeral-tenant", user.userId ?? "ephemeral", id);
+    return this.credentials.rotate(id, user.tenantId ?? "ephemeral-tenant", user.userId ?? "ephemeral");
   }
 
   @Delete("credentials/:id")
-  async revokeCredential(@Param("id") id: string, @Req() req: Request) {
-    await this.smtp.revokePassword((req.user as { tenantId?: string }).tenantId ?? "ephemeral-tenant", id);
-    return { revoked: true };
+  revokeCredential(@Param("id") id: string, @Req() req: Request) {
+    const user = req.user as { tenantId?: string };
+    return this.credentials.revoke(id, user.tenantId ?? "ephemeral-tenant");
   }
+
 
   @Patch("sender")
   updateSender(@Body() dto: UpdateSmtpSenderDto, @Req() req: Request) {
@@ -71,7 +95,6 @@ export class SmtpController {
     });
   }
 
-  /** Send a real email through the platform SES relay. */
   @Post("send")
   async send(@Body() dto: SendEmailDto, @Req() req: Request) {
     const user = req.user as { tenantId?: string };
@@ -87,11 +110,8 @@ export class SmtpController {
     return this.messages.submit(tenantId, dto, fromEmail, sender.fromName);
   }
 
-  /**
-   * Onboard a customer domain for sending: registers it in SES, links it to
-   * this tenant's configuration set (per-tenant reputation), and returns the
-   * DKIM records the customer must add to their DNS.
-   */
+
+  
   @Post("domains")
   onboardDomain(@Body() dto: OnboardDomainDto, @Req() req: Request) {
     const user = req.user as { tenantId?: string };

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Headers, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { MessageStatus } from "@prisma/client";
 import type { Request } from "express";
@@ -6,6 +6,8 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { SendEmailDto } from "../smtp/dto/send-email.dto";
 import { SmtpService } from "../smtp/smtp.service";
 import { MessagesService } from "./messages.service";
+import { assertSnsAuthentic, confirmSubscriptionIfNeeded } from "./sns-signature";
+
 
 @ApiTags("messages")
 @Controller("messages")
@@ -24,6 +26,19 @@ export class MessagesController {
   }
   @Get(":id") @ApiBearerAuth() @UseGuards(JwtAuthGuard)
   get(@Req() req: Request, @Param("id") id: string) { return this.messages.get((req.user as { tenantId: string }).tenantId, id); }
+
+  /**
+   * SES delivery, bounce and complaint events, delivered by SNS.
+   *
+   * No guard: Amazon cannot present a bearer token, and SNS HTTPS subscriptions
+   * cannot send custom headers either — which is why the previous
+   * `x-nani-webhook-secret` check could never have received a real event.
+   * Authenticity comes from the signature on the message body instead.
+   */
   @Post("events/ses")
-  ingest(@Headers("x-nani-webhook-secret") secret: string | undefined, @Body() body: unknown) { this.messages.verifyWebhookSecret(secret); return this.messages.ingestSesEvent(body); }
+  async ingest(@Body() body: unknown) {
+    const envelope = await assertSnsAuthentic(body);
+    if (await confirmSubscriptionIfNeeded(envelope)) return { accepted: true, confirmed: true };
+    return this.messages.ingestSesEvent(body);
+  }
 }

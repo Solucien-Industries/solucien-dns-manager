@@ -5,6 +5,7 @@ import { MailQueueService } from "./mail-queue.service";
 import { MessageIntakeService } from "./message-intake.service";
 import { SmtpAuthService } from "./smtp-auth.service";
 import { SmtpRelayServer } from "./smtp-relay.server";
+import { SmtpThrottleService } from "./smtp-throttle.service";
 
 /**
  * Import this from SmtpModule. Both halves of the pipeline live here: the relay
@@ -16,7 +17,8 @@ import { SmtpRelayServer } from "./smtp-relay.server";
  */
 @Module({
   imports: [PrismaModule],
-  providers: [
+    providers: [
+    SmtpThrottleService,
     SmtpAuthService,
     MessageIntakeService,
     MailQueueService,

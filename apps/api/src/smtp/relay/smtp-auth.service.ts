@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "crypto";
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
+import { SmtpThrottleService } from "./smtp-throttle.service";
 
 export type SmtpSessionContext = {
   credentialId: string;
@@ -11,19 +12,22 @@ export type SmtpSessionContext = {
 };
 
 /**
- * Verifies SMTP AUTH credentials and builds the session context that every
- * later stage (MAIL FROM, RCPT TO, DATA) authorises against.
+ * Verifies SMTP AUTH credentials and builds the session context that every later
+ * stage (MAIL FROM, RCPT TO, DATA) authorises against.
  *
- * Scope of this file vs. the spec: credential *creation*, rotation and
- * revocation are stories 4 and 11 and are not implemented here — this only
- * reads what those stories write. `hashSecret` is kept byte-compatible with the
- * existing SmtpService.hashSecret so credentials issued by either path verify.
+ * Story 5's brute-force protection lives here rather than in the relay, so the
+ * lockout applies before any password comparison happens — an attacker should
+ * not be able to use response timing to tell a locked account from a wrong
+ * password.
  */
 @Injectable()
 export class SmtpAuthService {
   private readonly logger = new Logger(SmtpAuthService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly throttle: SmtpThrottleService,
+  ) {}
 
   static hashSecret(secret: string): string {
     return createHash("sha256").update(secret).digest("hex");
@@ -31,14 +35,22 @@ export class SmtpAuthService {
 
   /**
    * Returns a session context on success, null on failure. Never distinguishes
-   * "no such user" from "wrong password" to the caller — the relay returns a
-   * single 535 for both so an attacker cannot enumerate valid usernames.
+   * "no such user" from "wrong password" from "locked out" to the caller — the
+   * relay returns one 535 for all of them, so an attacker cannot enumerate
+   * valid usernames or discover that they have tripped a limit.
    */
   async authenticate(username: string, secret: string, remoteIp: string): Promise<SmtpSessionContext | null> {
     if (!username || !secret) return null;
 
+    const normalizedUsername = username.trim().toLowerCase();
+
+    if (this.throttle.isLocked(remoteIp, normalizedUsername)) {
+      this.logger.warn(`Rejected locked-out SMTP auth for ${normalizedUsername} from ${remoteIp}`);
+      return null;
+    }
+
     const credential = await this.prisma.smtpCredential.findUnique({
-      where: { username: username.trim().toLowerCase() },
+      where: { username: normalizedUsername },
       select: {
         id: true,
         tenantId: true,
@@ -52,22 +64,32 @@ export class SmtpAuthService {
     // Hash regardless of whether the credential exists, so a missing username
     // and a wrong password take the same amount of time.
     const presented = SmtpAuthService.hashSecret(secret);
+
     if (!credential) {
       timingSafeEqualHex(presented, presented);
+      this.throttle.recordFailure(remoteIp, normalizedUsername);
       return null;
     }
 
     if (!timingSafeEqualHex(presented, credential.secretHash)) {
-      this.logger.warn(`SMTP auth failed for ${username} from ${remoteIp}`);
+      this.logger.warn(`SMTP auth failed for ${normalizedUsername} from ${remoteIp}`);
+      this.throttle.recordFailure(remoteIp, normalizedUsername);
       return null;
     }
 
+    // ACTIVE only: DISABLED and REVOKED both stop working immediately, which is
+    // what story 11 means by "revocation is immediate".
     if (credential.status !== "ACTIVE") {
-      this.logger.warn(`SMTP auth rejected for ${username}: credential is ${credential.status}`);
+      this.logger.warn(`SMTP auth rejected for ${normalizedUsername}: credential is ${credential.status}`);
+      // Not a brute-force signal — the password was right, the credential is
+      // simply switched off. Counting it would lock out a legitimate user who
+      // has not noticed their credential was disabled.
       return null;
     }
 
-    // Audit trail (story 4: "Record last-used timestamp and source IP").
+    this.throttle.recordSuccess(remoteIp, normalizedUsername);
+
+    // Audit trail (story 4: "record last-used timestamp and source IP").
     // Fire-and-forget: a failed audit write must not fail the session.
     this.prisma.smtpCredential
       .update({

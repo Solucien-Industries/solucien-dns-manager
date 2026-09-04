@@ -81,8 +81,8 @@ export class SmtpController {
 
   @Delete("credentials/:id")
   revokeCredential(@Param("id") id: string, @Req() req: Request) {
-    const user = req.user as { tenantId?: string };
-    return this.credentials.revoke(id, user.tenantId ?? "ephemeral-tenant");
+    const user = req.user as { userId?: string; tenantId?: string };
+    return this.credentials.revoke(id, user.tenantId ?? "ephemeral-tenant", user.userId ?? "ephemeral");
   }
 
 

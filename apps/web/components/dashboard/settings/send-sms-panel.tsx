@@ -5,6 +5,12 @@ import { AlertCircle, CheckCircle2, Copy, Loader2, Send, Smartphone } from "luci
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { sendSms, SmsSendError, type SendSmsResult } from "@/lib/api";
+import {
+  COUNTRIES,
+  DEFAULT_COUNTRY_ISO,
+  countryFromE164,
+  findCountry,
+} from "@/lib/country-codes";
 import { cn } from "@/lib/utils";
 
 type SendSmsPanelProps = {
@@ -32,15 +38,24 @@ const RATE_LIMIT_COOLDOWN_MS = 30_000;
 const DRAFT_KEY = "sdm-sms-draft";
 const HISTORY_LIMIT = 5;
 
-/** Mirrors the API's normalizer: strip formatting, force a single leading "+". */
-function normalizeRecipient(raw: string): string {
-  const cleaned = raw.trim().replace(/[\s()\-.]/g, "");
-  if (!cleaned) return "";
-  return cleaned.startsWith("+") ? cleaned : `+${cleaned.replace(/^\+*/, "")}`;
-}
-
 // Matches the server-side rule in sms.dto.ts (after normalization).
 const E164 = /^\+[1-9]\d{5,14}$/;
+
+/**
+ * Build an E.164 string from the country dialing code + whatever the user typed
+ * in the local-number box. Handles the common cases: a national trunk "0"
+ * prefix, a pasted full "+..." number, and a number that already carries the
+ * country code.
+ */
+function composeE164(dial: string, local: string): string {
+  const trimmed = local.trim();
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits) return "";
+  if (trimmed.startsWith("+")) return `+${digits}`;
+  const national = digits.replace(/^0/, "");
+  if (national.startsWith(dial) && national.length >= dial.length + 6) return `+${national}`;
+  return `+${dial}${national}`;
+}
 
 function prettyPhone(e164: string): string {
   // Light grouping for readability only — never sent to the API.
@@ -73,7 +88,8 @@ function friendlyError(error: unknown): string {
 }
 
 export function SendSmsPanel({ accessToken }: SendSmsPanelProps) {
-  const [to, setTo] = useState("");
+  const [countryIso, setCountryIso] = useState(DEFAULT_COUNTRY_ISO);
+  const [localNumber, setLocalNumber] = useState("");
   const [message, setMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -90,16 +106,39 @@ export function SendSmsPanel({ accessToken }: SendSmsPanelProps) {
   const resultRef = useRef<HTMLDivElement>(null);
   const draftLoaded = useRef(false);
 
+  const country = findCountry(countryIso) ?? COUNTRIES[0];
+  const overriding = localNumber.trim().startsWith("+");
+
   // Restore an unsent draft so navigating away mid-message doesn't lose it.
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(DRAFT_KEY);
       if (raw) {
-        const draft = JSON.parse(raw) as { to?: unknown; message?: unknown };
+        const draft = JSON.parse(raw) as {
+          countryIso?: unknown;
+          localNumber?: unknown;
+          to?: unknown;
+          message?: unknown;
+        };
         // One-time hydration from storage on mount — not a render-loop trigger.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        if (typeof draft.to === "string") setTo(draft.to);
+        /* eslint-disable react-hooks/set-state-in-effect */
         if (typeof draft.message === "string") setMessage(draft.message);
+        if (typeof draft.countryIso === "string" && findCountry(draft.countryIso)) {
+          setCountryIso(draft.countryIso);
+        }
+        if (typeof draft.localNumber === "string") {
+          setLocalNumber(draft.localNumber);
+        } else if (typeof draft.to === "string" && draft.to) {
+          // Migrate the pre-country-picker draft shape.
+          const matched = countryFromE164(draft.to);
+          if (matched) {
+            setCountryIso(matched.iso);
+            setLocalNumber(draft.to.replace(/\D/g, "").slice(matched.dial.length));
+          } else {
+            setLocalNumber(draft.to);
+          }
+        }
+        /* eslint-enable react-hooks/set-state-in-effect */
       }
     } catch {
       /* ignore malformed / unavailable storage */
@@ -111,12 +150,12 @@ export function SendSmsPanel({ accessToken }: SendSmsPanelProps) {
   useEffect(() => {
     if (!draftLoaded.current) return;
     try {
-      if (!to && !message) window.localStorage.removeItem(DRAFT_KEY);
-      else window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ to, message }));
+      if (!localNumber && !message) window.localStorage.removeItem(DRAFT_KEY);
+      else window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ countryIso, localNumber, message }));
     } catch {
       /* ignore */
     }
-  }, [to, message]);
+  }, [countryIso, localNumber, message]);
 
   // Drive the rate-limit countdown.
   useEffect(() => {
@@ -125,13 +164,16 @@ export function SendSmsPanel({ accessToken }: SendSmsPanelProps) {
     return () => clearInterval(timer);
   }, [cooldownUntil, now]);
 
-  const normalizedTo = useMemo(() => normalizeRecipient(to), [to]);
+  const normalizedTo = useMemo(
+    () => composeE164(country.dial, localNumber),
+    [country.dial, localNumber],
+  );
   const cooldownRemaining = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
 
   function computeErrors(): FieldErrors {
     const next: FieldErrors = {};
-    if (!to.trim()) next.to = "A recipient number is required.";
-    else if (!E164.test(normalizedTo)) next.to = "Enter a valid international number, e.g. +27731234567.";
+    if (!localNumber.trim()) next.to = "A recipient number is required.";
+    else if (!E164.test(normalizedTo)) next.to = "That doesn't look like a valid phone number for the selected country.";
 
     const trimmed = message.trim();
     if (!trimmed) next.message = "A message is required.";
@@ -142,7 +184,7 @@ export function SendSmsPanel({ accessToken }: SendSmsPanelProps) {
   const isValid = useMemo(
     () => Object.keys(computeErrors()).length === 0,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [to, message, normalizedTo],
+    [localNumber, countryIso, message, normalizedTo],
   );
 
   async function handleSubmit(event: React.FormEvent) {
@@ -178,6 +220,7 @@ export function SendSmsPanel({ accessToken }: SendSmsPanelProps) {
           ...prev,
         ].slice(0, HISTORY_LIMIT),
       );
+      setLocalNumber("");
       setMessage("");
       setFieldErrors({});
       try {
@@ -236,36 +279,59 @@ export function SendSmsPanel({ accessToken }: SendSmsPanelProps) {
       </div>
 
       <form ref={formRef} className="mt-4 grid max-w-2xl gap-4" onSubmit={handleSubmit} noValidate>
-        <label className="grid gap-2 text-sm font-semibold">
-          To
-          <Input
-            ref={toRef}
-            value={to}
-            onChange={(event) => {
-              setTo(event.target.value);
-              if (fieldErrors.to) setFieldErrors((prev) => ({ ...prev, to: undefined }));
-            }}
-            onBlur={() => {
-              const next = computeErrors();
-              setFieldErrors((prev) => ({ ...prev, to: next.to }));
-            }}
-            placeholder="+27731234567"
-            inputMode="tel"
-            autoComplete="off"
-            disabled={sending}
-            aria-invalid={Boolean(fieldErrors.to)}
-            aria-describedby={fieldErrors.to ? "sms-to-error" : "sms-to-hint"}
-          />
+        <div className="grid gap-2 text-sm font-semibold">
+          <span id="sms-to-label">To</span>
+          <div className="flex gap-2">
+            <select
+              aria-label="Country code"
+              value={countryIso}
+              onChange={(event) => {
+                setCountryIso(event.target.value);
+                if (fieldErrors.to) setFieldErrors((prev) => ({ ...prev, to: undefined }));
+              }}
+              disabled={sending || overriding}
+              className="h-10 w-40 shrink-0 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-50"
+            >
+              {COUNTRIES.map((c) => (
+                <option key={c.iso} value={c.iso}>
+                  +{c.dial} {c.flag} {c.name}
+                </option>
+              ))}
+            </select>
+            <Input
+              ref={toRef}
+              value={localNumber}
+              onChange={(event) => {
+                setLocalNumber(event.target.value);
+                if (fieldErrors.to) setFieldErrors((prev) => ({ ...prev, to: undefined }));
+              }}
+              onBlur={() => {
+                const next = computeErrors();
+                setFieldErrors((prev) => ({ ...prev, to: next.to }));
+              }}
+              placeholder={overriding ? "+27 73 123 4567" : "73 123 4567"}
+              inputMode="tel"
+              autoComplete="off"
+              disabled={sending}
+              aria-labelledby="sms-to-label"
+              aria-invalid={Boolean(fieldErrors.to)}
+              aria-describedby={fieldErrors.to ? "sms-to-error" : "sms-to-hint"}
+            />
+          </div>
           {fieldErrors.to ? (
             <span id="sms-to-error" className="text-xs font-normal text-red-600">
               {fieldErrors.to}
             </span>
           ) : (
             <span id="sms-to-hint" className="text-xs font-normal text-muted-foreground">
-              {E164.test(normalizedTo) ? `Will send to ${prettyPhone(normalizedTo)}` : "International format, digits only."}
+              {E164.test(normalizedTo)
+                ? `Will send to ${prettyPhone(normalizedTo)}`
+                : overriding
+                  ? "Using the full number as entered."
+                  : `Local number — the ${country.flag} +${country.dial} code is added automatically.`}
             </span>
           )}
-        </label>
+        </div>
 
         <label className="grid gap-2 text-sm font-semibold">
           Message
